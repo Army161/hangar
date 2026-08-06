@@ -1,0 +1,22 @@
+[package]
+name = "hangar-desktop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Hangar — why is this running, and what happens if I turn it off?"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+hangar-core = { path = "../../../crates/hangar-core" }
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-shell = "2"
+tauri-plugin-opener = "2"
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[features]
+# Set by `tauri build --features custom-protocol`
+custom-protocol = ["tauri/custom-protocol"]

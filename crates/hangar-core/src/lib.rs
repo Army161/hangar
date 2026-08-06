@@ -12,7 +12,9 @@
 
 pub mod attribute;
 pub mod collect;
+pub mod executor;
 pub mod guard;
+pub mod manifest;
 pub mod persistence;
 pub mod types;
 

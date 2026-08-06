@@ -22,3 +22,5 @@ Thumbs.db
 
 # Rust build output
 target/
+node_modules/
+package-lock.json

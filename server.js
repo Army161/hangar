@@ -551,7 +551,7 @@ const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; cha
 
 function serveStatic(res, rel) {
   const file = path.join(ROOT, 'public', rel);
-  if (!file.startsWith(path.join(ROOT, 'public'))) { res.writeHead(403).end('Forbidden'); return; }
+  if (!file.startsWith(path.join(ROOT, 'apps', 'desktop', 'src'))) { res.writeHead(403).end('Forbidden'); return; }
   fs.readFile(file, (err, buf) => {
     if (err) { res.writeHead(404, { 'Content-Type': 'text/plain' }).end('Not found'); return; }
     res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-store' });

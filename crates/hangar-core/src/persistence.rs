@@ -9,7 +9,7 @@
 
 use crate::types::{PersistenceEntry, ProtectedConfig};
 use regex::Regex;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 
 fn security() -> &'static Vec<Regex> {
@@ -35,7 +35,11 @@ fn core_services() -> &'static Vec<Regex> {
     })
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+/// `Deserialize` matters as much as `Serialize` here: an action is written
+/// into a manifest and read back later to invert it, often after the live
+/// entry it describes has vanished from the collector entirely.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
 pub struct Action {
     pub op: String,
     pub summary: String,
