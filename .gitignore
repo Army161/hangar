@@ -1,0 +1,21 @@
+# Runtime state — machine-specific, never shared
+manifests/*.json
+quarantine/
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Rust / Tauri (from M2 onward)
+target/
+apps/desktop/src-tauri/target/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Secrets — Hangar flags plaintext credentials in argv; it must not ship any
+.env
+.env.*
+*.pem
+*.key

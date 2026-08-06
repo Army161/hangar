@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hangar — local process, port &amp; origin map</title>
+<link rel="stylesheet" href="/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%230E2B31'/><path d='M4 22h24v3H4z' fill='%23E5A50A'/><path d='M8 20l8-12 8 12z' fill='%23E5A50A'/></svg>">
+</head>
+<body>
+
+<header class="hdr">
+  <div class="hdr-top">
+    <div class="brand">Han<span>gar</span></div>
+    <span class="badge-ro" id="mode-badge">starting…</span>
+    <div class="hdr-right">
+      <div class="pulse" id="pulse"><i></i><span id="pulse-txt">starting…</span></div>
+      <button class="icon-btn" id="refresh">Refresh</button>
+      <button class="icon-btn" id="theme">Theme</button>
+    </div>
+  </div>
+
+  <div class="gauges" id="gauges"></div>
+
+  <nav class="tabs" role="tablist">
+    <button class="tab" role="tab" data-view="owners"  aria-selected="true">Owners <b id="c-owners">—</b></button>
+    <button class="tab" role="tab" data-view="ports"   aria-selected="false">Port wall <b id="c-ports">—</b></button>
+    <button class="tab" role="tab" data-view="origins" aria-selected="false">Origins <b id="c-origins">—</b></button>
+    <button class="tab" role="tab" data-view="fanout"  aria-selected="false">Fan-out <b id="c-fanout">—</b></button>
+    <button class="tab" role="tab" data-view="manifests" aria-selected="false">Manifests <b id="c-manifests">—</b></button>
+  </nav>
+</header>
+
+<main>
+  <div id="errors"></div>
+
+  <!-- OWNERS -->
+  <section id="view-owners">
+    <div class="toolbar">
+      <input class="search" id="q-owners" type="search" placeholder="filter owners, e.g. mcp, openclaw, python" autocomplete="off">
+      <div class="seg" role="group" aria-label="Sort owners">
+        <button data-sort="memMB" aria-pressed="true">Memory</button>
+        <button data-sort="cpuPct" aria-pressed="false">CPU</button>
+        <button data-sort="procs" aria-pressed="false">Count</button>
+        <button data-sort="owner" aria-pressed="false">Name</button>
+      </div>
+      <div class="seg" role="group" aria-label="Filter kind">
+        <button data-kind="all" aria-pressed="true">All</button>
+        <button data-kind="mine" aria-pressed="false">Mine</button>
+        <button data-kind="mcp" aria-pressed="false">MCP</button>
+        <button data-kind="system" aria-pressed="false">System</button>
+      </div>
+      <span class="hint">click a row to expand</span>
+    </div>
+    <div class="rows" id="owners">
+      <div class="row-h">
+        <span></span><span>Owner</span><span class="num">Memory</span>
+        <span class="num cpu-h">CPU now</span><span class="num">Procs</span><span class="origin-h">Origin</span>
+      </div>
+      <div class="empty">Reading the process table…</div>
+    </div>
+  </section>
+
+  <!-- PORTS -->
+  <section id="view-ports" hidden>
+    <p class="note">Every port listening on this machine, probed once and cached. Green edge means
+      something answered HTTP — those are live local apps you can click straight into.</p>
+    <div class="toolbar">
+      <input class="search" id="q-ports" type="search" placeholder="filter ports or owners" autocomplete="off">
+      <div class="seg" role="group" aria-label="Filter ports">
+        <button data-pf="all" aria-pressed="true">All</button>
+        <button data-pf="live" aria-pressed="false">Answering HTTP</button>
+        <button data-pf="app" aria-pressed="false">Below 50000</button>
+      </div>
+    </div>
+    <div class="wall" id="ports"><div class="empty">Probing local ports…</div></div>
+  </section>
+
+  <!-- ORIGINS -->
+  <section id="view-origins" hidden>
+    <p class="note">Everything configured to start itself, oldest first. Dates come from the file,
+      task registration, or target binary — the source is shown so you know how firm it is.
+      A filled dot means it produced a process that is running right now.
+      <b>Disabling here is what survives a reboot</b> — killing the process only lasts until
+      something restarts it. Nothing is deleted: startup files move to quarantine, registry values
+      are recorded before removal, tasks and services keep their definitions.</p>
+    <div class="toolbar">
+      <input class="search" id="q-origins" type="search" placeholder="filter startup entries" autocomplete="off">
+      <div class="seg" role="group" aria-label="Filter origins">
+        <button data-of="all" aria-pressed="true">All</button>
+        <button data-of="startup-folder" aria-pressed="false">Startup folder</button>
+        <button data-of="scheduled-task" aria-pressed="false">Tasks</button>
+        <button data-of="registry-run" aria-pressed="false">Registry</button>
+        <button data-of="service" aria-pressed="false">Services</button>
+      </div>
+    </div>
+    <div class="tl" id="origins"><div class="empty">Reading persistence surfaces…</div></div>
+  </section>
+
+  <!-- FANOUT -->
+  <section id="view-fanout" hidden>
+    <p class="note">The same thing started more than once, independently. Reclaim is what you would
+      get back by collapsing to a single copy.</p>
+    <div class="fan" id="fanout"><div class="empty">Looking for duplicates…</div></div>
+  </section>
+
+  <!-- MANIFESTS -->
+  <section id="view-manifests" hidden>
+    <p class="note">Every park writes a manifest here before anything dies. Restore relaunches the
+      recorded commands — best effort: it brings the program back, not its in-memory state.</p>
+    <div class="tl" id="manifests"><div class="empty">No manifests yet. Nothing has been parked.</div></div>
+  </section>
+</main>
+
+<!-- Selection action bar -->
+<div class="selbar" id="selbar" hidden>
+  <span class="mono" id="sel-summary">0 selected</span>
+  <button class="btn-park" id="btn-park">Park selected…</button>
+  <button class="icon-btn" id="btn-clear">Clear</button>
+</div>
+
+<!-- Persistence action bar -->
+<div class="selbar" id="persistbar" hidden>
+  <span class="mono" id="persist-summary">0 selected</span>
+  <button class="btn-park" id="btn-disable">Disable at startup…</button>
+  <button class="icon-btn" id="btn-pclear">Clear</button>
+</div>
+
+<!-- Park modal: dry-run preview + typed confirmation -->
+<div class="modal-wrap" id="modal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <h3 id="modal-title">Park — dry run</h3>
+    <div id="modal-body"><div class="empty">Planning…</div></div>
+    <div class="modal-confirm" id="modal-confirm" hidden>
+      <label for="confirm-input">Type <b class="mono" id="confirm-phrase"></b> to execute. A restore
+        manifest is written first; nothing dies without it.</label>
+      <div class="confirm-row">
+        <input class="search" id="confirm-input" autocomplete="off" spellcheck="false">
+        <button class="btn-park" id="btn-execute" disabled>Execute</button>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="icon-btn" id="btn-close">Close</button>
+    </div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>

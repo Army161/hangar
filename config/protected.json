@@ -1,0 +1,16 @@
+{
+  "_comment": "Apps and projects Hangar must never kill. Names match process-name prefixes; projects match anywhere in the command line. Edit freely; the system-critical list lives in code and is not affected by this file.",
+  "names": [
+    "ollama",
+    "ollama app",
+    "llama-server",
+    "terminal64",
+    "metatrader",
+    "OneDrive",
+    "SignalRgb"
+  ],
+  "projects": [
+    "TAO_WALLET",
+    "OUROBOROS"
+  ]
+}
