@@ -28,6 +28,7 @@ const { probePorts } = require('./lib/probe');
 const { evaluateKill } = require('./lib/guard');
 const { writeManifest, listManifests, restoreManifest, markRestored } = require('./lib/manifest');
 const { entryId, evaluatePersistence, describeAction, invertAction } = require('./lib/persistence');
+const { classifyProject, mergeWithLive, rankGraveyard } = require('./lib/graveyard');
 
 const PORT = Number(process.env.HANGAR_PORT) || 7420;
 const HOST = '127.0.0.1';
@@ -72,9 +73,12 @@ function runPowerShell(scriptFile, timeoutMs = 60_000) {
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
+const GRAVE_TTL = 10 * 60_000; // the sweep costs ~3s; never block the dashboard on it
+
 const state = {
   fast: null, fastAt: 0, fastPending: null,
   slow: null, slowAt: 0, slowPending: null,
+  grave: null, graveAt: 0, gravePending: null,
   prevCpu: null,      // pid -> cpuSec, for computing live CPU%
   prevCpuAt: 0,
   errors: [],
@@ -110,6 +114,24 @@ async function getSlow() {
     .finally(() => { state.slowPending = null; });
 
   return state.slowPending;
+}
+
+/**
+ * Graveyard sweep. Lazy and long-cached: it walks the user profile and costs
+ * seconds, so it is only collected when the tab is opened and never blocks a
+ * dashboard refresh.
+ */
+async function getGraveyard(force = false) {
+  const now = Date.now();
+  if (!force && state.grave && now - state.graveAt < GRAVE_TTL) return state.grave;
+  if (state.gravePending) return state.gravePending;
+
+  state.gravePending = runPowerShell('collect-graveyard.ps1', 180_000)
+    .then((data) => { state.grave = data; state.graveAt = Date.now(); return data; })
+    .catch((e) => { noteError('graveyard collector', e); return state.grave; })
+    .finally(() => { state.gravePending = null; });
+
+  return state.gravePending;
 }
 
 /** CPU% needs two samples — cumulative seconds alone tells you nothing about now. */
@@ -231,6 +253,7 @@ async function buildSnapshot() {
     ts: new Date().toISOString(),
     readOnly: READ_ONLY,
     version: VERSION,
+    vram: fast.vram || null,
     system: { ...fast.system, usedGB },
     stale: { processes: Date.now() - state.fastAt, persistence: Date.now() - state.slowAt },
     processes: processesOut,
@@ -558,6 +581,43 @@ const server = http.createServer(async (req, res) => {
 
   if (url.pathname === '/api/manifests' && req.method === 'GET') {
     return json(res, 200, { manifests: listManifests() });
+  }
+
+  // Read-only. The Graveyard never writes, moves, or deletes anything.
+  if (url.pathname === '/api/graveyard' && req.method === 'GET') {
+    try {
+      const [grave, snap] = await Promise.all([
+        getGraveyard(url.searchParams.get('refresh') === '1'),
+        buildSnapshot().catch(() => null),
+      ]);
+      if (!grave) return json(res, 503, { error: 'graveyard sweep has not completed yet' });
+
+      const nowMs = Date.now();
+      const classified = (grave.projects || []).map((p) => {
+        const c = classifyProject(p, nowMs);
+        // Carry collector-only fields the pure classifier does not know about.
+        return {
+          ...c,
+          agent: p.agent || null,
+          subject: p.subject || null,
+          fileCount: p.fileCount ?? c.fileCount,
+        };
+      });
+      const merged = mergeWithLive(classified, snap ? snap.owners : [], snap ? snap.ports : []);
+      const ranked = rankGraveyard(merged);
+
+      const byState = {};
+      for (const p of ranked) byState[p.state] = (byState[p.state] || 0) + 1;
+
+      return json(res, 200, {
+        ts: grave.ts, home: grave.home, ageMs: Date.now() - state.graveAt,
+        counts: { total: ranked.length, ...byState },
+        projects: ranked,
+      });
+    } catch (e) {
+      noteError('graveyard', e);
+      return json(res, 500, { error: e.message });
+    }
   }
 
   if (req.method === 'POST') {

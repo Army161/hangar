@@ -11,7 +11,9 @@ const state = {
   ownerKind: 'all',
   portFilter: 'all',
   originFilter: 'all',
-  q: { owners: '', ports: '', origins: '' },
+  q: { owners: '', ports: '', origins: '', graveyard: '' },
+  graveyard: null,
+  graveFilter: 'all',
   loading: false,
   selected: new Set(),        // owner keys ticked for parking
   selectedEntries: new Set(), // persistence entry ids ticked for disabling
@@ -124,6 +126,7 @@ function renderAll() {
   renderPorts(s);
   renderOrigins(s);
   renderFanout(s);
+  if (state.graveyard) renderGraveyard();
 }
 
 function renderGauges(s) {
@@ -138,6 +141,20 @@ function renderGauges(s) {
     { n: s.fanout.length, l: 'Duplicated owners', cls: s.fanout.length > 5 ? 'warn' : '', pct: Math.min(100, s.fanout.length * 9) },
     { n: `${Math.floor(sy.uptimeMin / 60)}h ${sy.uptimeMin % 60}m`, l: 'Since boot', cls: '', pct: Math.min(100, sy.uptimeMin / 14.4) },
   ];
+
+  // VRAM became the binding constraint on this machine once system RAM was
+  // fixed — a local model needing ~6.6 GB OOMs below ~5 GB free. Untracked
+  // memory is the exact problem Hangar exists to surface.
+  if (s.vram) {
+    const usedPct = (s.vram.usedMB / s.vram.totalMB) * 100;
+    const freeGB = (s.vram.freeMB / 1024).toFixed(1);
+    g.push({
+      n: `${freeGB}<small>/${(s.vram.totalMB / 1024).toFixed(0)} GB</small>`,
+      l: 'VRAM free',
+      cls: s.vram.freeMB < 4096 ? 'hot' : s.vram.freeMB < 6656 ? 'warn' : '',
+      pct: usedPct,
+    });
+  }
   $('#gauges').innerHTML = g.map((x) => `
     <div class="g ${x.cls}">
       <span class="n">${x.n}</span>
@@ -296,6 +313,60 @@ async function executePlan() {
   } finally {
     $('#btn-execute').textContent = 'Execute';
   }
+}
+
+/* ---------------- graveyard ---------------- */
+async function loadGraveyard(refresh = false) {
+  const el = $('#graveyard');
+  el.innerHTML = `<div class="empty">${refresh ? 'Re-sweeping' : 'Sweeping your user folder and agent session stores'} — this takes a few seconds…</div>`;
+  try {
+    const res = await fetch(`/api/graveyard${refresh ? '?refresh=1' : ''}`, { cache: 'no-store' });
+    const r = await res.json();
+    if (!res.ok) throw new Error(r.error || `sweep failed (${res.status})`);
+    state.graveyard = r;
+    renderGraveyard();
+  } catch (e) {
+    el.innerHTML = `<div class="err">${esc(e.message)}</div>`;
+  }
+}
+
+function renderGraveyard() {
+  const g = state.graveyard;
+  if (!g) return;
+  $('#c-graveyard').textContent = g.counts.total;
+
+  const q = state.q.graveyard.toLowerCase();
+  const f = state.graveFilter;
+  const list = g.projects.filter((p) => {
+    if (f === 'agent-sessions' && p.kind !== 'agent-sessions') return false;
+    if (f !== 'all' && f !== 'agent-sessions' && p.state !== f) return false;
+    if (!q) return true;
+    return `${p.name} ${p.path} ${p.stack} ${p.agent || ''} ${p.subject || ''}`.toLowerCase().includes(q);
+  });
+
+  if (!list.length) { $('#graveyard').innerHTML = '<div class="empty">Nothing matches that filter.</div>'; return; }
+
+  $('#graveyard').innerHTML = list.map((p) => {
+    const age = p.daysDormant == null ? '—'
+      : p.daysDormant < 1 ? 'today'
+      : p.daysDormant < 60 ? `${Math.round(p.daysDormant)}d`
+      : `${Math.round(p.daysDormant / 30)}mo`;
+    return `<div class="grave ${p.state === 'live-forgotten' ? 'hot' : ''}">
+      <span><span class="g-state ${esc(p.state)}">${esc(p.state.replace('-', ' '))}</span></span>
+      <span>
+        <span class="g-name">${esc(p.name)}${p.title ? ` — ${esc(p.title)}` : ''}</span>
+        <span class="g-path" title="${esc(p.path)}">${esc(p.subject || p.path)}</span>
+      </span>
+      <span class="g-num">${age}<small>since touched</small></span>
+      <span class="g-num">${p.kind === 'agent-sessions' ? p.sessionCount : (p.fileCount ?? '—')}<small>${p.kind === 'agent-sessions' ? 'sessions' : 'files'}</small></span>
+      <span class="g-meta">
+        <span>${esc(p.agent || p.stack)}</span>
+        ${p.running ? `<span class="chip solid">running</span>` : ''}
+        ${p.url ? `<a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer">${esc(p.url)} ↗</a>` : ''}
+        ${p.gitBranch ? `<span style="color:var(--fg-3)">${esc(p.gitBranch)}</span>` : ''}
+      </span>
+    </div>`;
+  }).join('');
 }
 
 async function loadManifests() {
@@ -570,8 +641,10 @@ function renderFanout(s) {
 document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => {
   document.querySelectorAll('.tab').forEach((x) => x.setAttribute('aria-selected', String(x === t)));
   state.view = t.dataset.view;
-  ['owners', 'ports', 'origins', 'fanout', 'manifests'].forEach((v) => { $(`#view-${v}`).hidden = v !== state.view; });
+  ['owners', 'ports', 'origins', 'fanout', 'graveyard', 'manifests'].forEach((v) => { $(`#view-${v}`).hidden = v !== state.view; });
   if (state.view === 'manifests') loadManifests();
+  // The sweep costs seconds, so it runs on first open rather than at startup.
+  if (state.view === 'graveyard' && !state.graveyard) loadGraveyard();
 }));
 
 $('#owners').addEventListener('click', (e) => {
@@ -676,6 +749,9 @@ wireSeg('[data-sort]', (b) => { state.ownerSort = b.dataset.sort; });
 wireSeg('[data-kind]', (b) => { state.ownerKind = b.dataset.kind; });
 wireSeg('[data-pf]', (b) => { state.portFilter = b.dataset.pf; });
 wireSeg('[data-of]', (b) => { state.originFilter = b.dataset.of; });
+wireSeg('[data-gf]', (b) => { state.graveFilter = b.dataset.gf; });
+$('#q-graveyard').addEventListener('input', (e) => { state.q.graveyard = e.target.value; renderGraveyard(); });
+$('#btn-rescan').addEventListener('click', () => loadGraveyard(true));
 
 $('#q-owners').addEventListener('input', (e) => { state.q.owners = e.target.value; renderOwners(state.snap); });
 $('#q-ports').addEventListener('input', (e) => { state.q.ports = e.target.value; renderPorts(state.snap); });

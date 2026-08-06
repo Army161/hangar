@@ -32,8 +32,27 @@ $ports = foreach ($c in (Get-NetTCPConnection -State Listen)) {
   }
 }
 
+# VRAM. After the 2026-07-31 cleanup fixed system RAM, GPU memory became the
+# binding constraint — qwen3.5:9b needs ~6.6 GB and OOMs reproducibly below
+# ~5 GB free. Untracked memory is exactly the class of problem Hangar exists
+# to surface, so it belongs on the dashboard.
+$vram = $null
+$smi = Get-Command nvidia-smi -ErrorAction SilentlyContinue
+if ($smi) {
+  $line = & nvidia-smi --query-gpu=memory.total,memory.used,name --format=csv,noheader,nounits 2>$null | Select-Object -First 1
+  if ($line -and $line -match '^\s*(\d+)\s*,\s*(\d+)\s*,\s*(.+)$') {
+    $vram = [pscustomobject]@{
+      totalMB = [int]$Matches[1]
+      usedMB  = [int]$Matches[2]
+      freeMB  = [int]$Matches[1] - [int]$Matches[2]
+      name    = $Matches[3].Trim()
+    }
+  }
+}
+
 [pscustomobject]@{
   ts     = (Get-Date).ToString('o')
+  vram   = $vram
   system = [pscustomobject]@{
     boot      = $os.LastBootUpTime.ToString('o')
     uptimeMin = [math]::Round(((Get-Date) - $os.LastBootUpTime).TotalMinutes, 0)

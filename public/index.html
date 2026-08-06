@@ -27,6 +27,7 @@
     <button class="tab" role="tab" data-view="ports"   aria-selected="false">Port wall <b id="c-ports">—</b></button>
     <button class="tab" role="tab" data-view="origins" aria-selected="false">Origins <b id="c-origins">—</b></button>
     <button class="tab" role="tab" data-view="fanout"  aria-selected="false">Fan-out <b id="c-fanout">—</b></button>
+    <button class="tab" role="tab" data-view="graveyard" aria-selected="false">Graveyard <b id="c-graveyard">—</b></button>
     <button class="tab" role="tab" data-view="manifests" aria-selected="false">Manifests <b id="c-manifests">—</b></button>
   </nav>
 </header>
@@ -102,6 +103,26 @@
     <p class="note">The same thing started more than once, independently. Reclaim is what you would
       get back by collapsing to a single copy.</p>
     <div class="fan" id="fanout"><div class="empty">Looking for duplicates…</div></div>
+  </section>
+
+  <!-- GRAVEYARD -->
+  <section id="view-graveyard" hidden>
+    <p class="note"><b>Read-only.</b> Projects found under your user folder and in agent session
+      stores, ranked by how likely you are to have forgotten them. Build and repository noise
+      (<span class="mono">.git</span>, <span class="mono">node_modules</span>,
+      <span class="mono">target/</span>) is excluded from the last-touched date — tooling rewrites
+      those constantly and would make everything look active.</p>
+    <div class="toolbar">
+      <input class="search" id="q-graveyard" type="search" placeholder="filter projects" autocomplete="off">
+      <div class="seg" role="group" aria-label="Filter graveyard">
+        <button data-gf="all" aria-pressed="true">All</button>
+        <button data-gf="live-forgotten" aria-pressed="false">Forgotten but live</button>
+        <button data-gf="abandoned" aria-pressed="false">Abandoned</button>
+        <button data-gf="agent-sessions" aria-pressed="false">Agent sessions</button>
+      </div>
+      <button class="icon-btn" id="btn-rescan">Rescan</button>
+    </div>
+    <div class="graves" id="graveyard"><div class="empty">Open this tab to run the sweep…</div></div>
   </section>
 
   <!-- MANIFESTS -->
