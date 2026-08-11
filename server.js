@@ -550,8 +550,9 @@ async function handlePersistExecute(body, res) {
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
 
 function serveStatic(res, rel) {
-  const file = path.join(ROOT, 'public', rel);
-  if (!file.startsWith(path.join(ROOT, 'apps', 'desktop', 'src'))) { res.writeHead(403).end('Forbidden'); return; }
+  const WEB_ROOT = path.join(ROOT, 'apps', 'desktop', 'src');
+  const file = path.join(WEB_ROOT, rel);
+  if (!file.startsWith(WEB_ROOT)) { res.writeHead(403).end('Forbidden'); return; }
   fs.readFile(file, (err, buf) => {
     if (err) { res.writeHead(404, { 'Content-Type': 'text/plain' }).end('Not found'); return; }
     res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-store' });
