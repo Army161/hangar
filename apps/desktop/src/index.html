@@ -2,8 +2,20 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Hangar — local process, port &amp; origin map</title>
+
+<!-- Installable on phones and tablets. Inert in the Tauri build, which is
+     already an installed app — see pwa.js. -->
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#0E2B31">
+<meta name="color-scheme" content="light dark">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Hangar">
+<link rel="apple-touch-icon" href="/icons/icon-256.png">
+
 <link rel="stylesheet" href="/style.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%230E2B31'/><path d='M4 22h24v3H4z' fill='%23E5A50A'/><path d='M8 20l8-12 8 12z' fill='%23E5A50A'/></svg>">
 </head>
@@ -168,5 +180,6 @@
 
 <script src="/ipc.js"></script>
 <script src="/app.js"></script>
+<script src="/pwa.js"></script>
 </body>
 </html>
