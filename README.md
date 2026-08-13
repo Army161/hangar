@@ -1,25 +1,62 @@
-# Hangar v0.2 — guarded writes
+<div align="center">
 
-Local process, port, and origin map. Answers the question Task Manager can't:
-**why is this running, and what is it?** — and now lets you park it reversibly.
+# Hangar
 
-## Run it
+**Why is this running, and what happens if I turn it off?**
+
+Local process, port and origin map — with a reversible off switch.
+
+[![CI](https://github.com/Army161/hangar/actions/workflows/ci.yml/badge.svg)](https://github.com/Army161/hangar/actions/workflows/ci.yml)
+[![Release](https://github.com/Army161/hangar/actions/workflows/release.yml/badge.svg)](https://github.com/Army161/hangar/actions/workflows/release.yml)
+[![Docs](https://img.shields.io/badge/docs-github%20pages-0E2B31)](https://army161.github.io/hangar/)
+![Version](https://img.shields.io/badge/version-0.4.0-E5A50A)
+
+</div>
+
+---
+
+Task Manager tells you `node.exe ×76`. Hangar tells you *which* seventy-six, who
+started them, when that was arranged, and what breaks if you stop them.
+
+Everything runs locally. The process table never leaves the machine.
+
+## Install
+
+| Platform | File | Notes |
+|---|---|---|
+| **Windows** | `Hangar_0.4.0_x64-setup.exe` | Per-user, no admin prompt |
+| **Windows (MSI)** | `Hangar_0.4.0_x64_en-US.msi` | For managed deployment |
+| **macOS (Apple Silicon)** | `Hangar_0.4.0_aarch64.dmg` | |
+| **macOS (Intel)** | `Hangar_0.4.0_x64.dmg` | |
+| **Linux** | `hangar_0.4.0_amd64.AppImage` | Also `.deb` |
+
+Grab them from [Releases](https://github.com/Army161/hangar/releases/latest).
+
+### Or run the web version
+
+Zero dependencies, pure Node stdlib — no `npm install` needed.
 
 ```bash
 node server.js
 ```
 
-Then open **http://localhost:7420**. Or double-click `start.cmd`, which does both.
+Then open **http://localhost:7420**, or double-click `start.cmd`, which does both.
 
-No `npm install` — zero dependencies, pure Node stdlib.
+## Two front ends, one UI
 
-```bash
-node --test test/*.test.js
-```
+The desktop app and the web agent render the identical interface from
+`apps/desktop/src/`. They differ only in how they reach the system:
+
+| | Desktop (Tauri) | Web (`server.js`) |
+|---|---|---|
+| Backend | `hangar-core` in Rust, over IPC | Node + PowerShell collectors |
+| Network | **No TCP listener at all** | `127.0.0.1:7420` |
+| Tray icon | Yes | No |
+| Best for | Daily use | Development, headless boxes |
 
 ## Safety model
 
-v0.2 can stop processes. Every kill passes three gates, in order:
+Hangar can stop processes. Every kill passes three gates, in order:
 
 1. **Dry run** — `POST /api/plan` returns exactly what would die and what the
    guard refuses, with a confirmation phrase. Nothing is killed.
@@ -33,7 +70,6 @@ A restore manifest is written to `manifests/` **before the first kill**. If the
 manifest cannot be written, nothing dies.
 
 Run with `HANGAR_READONLY=1` to disable every write endpoint.
-The server binds to `127.0.0.1` only — your process table never leaves the machine.
 
 ### What the guard protects
 
@@ -69,7 +105,7 @@ are marked non-restorable and skipped: they respawn on their own.
 Restore is honest about its limit: it brings the program back, not its
 in-memory state.
 
-## The four views
+## The views
 
 | View | What it answers |
 |---|---|
@@ -77,6 +113,7 @@ in-memory state.
 | **Port wall** | Every listening port, probed for HTTP and labelled with its page title. Your forgotten local apps, clickable. |
 | **Origins** | Everything configured to start itself, oldest first, with the date it was added. |
 | **Fan-out** | The same thing running more than once, and what collapsing it would reclaim. |
+| **Graveyard** | Projects that stopped being touched, ranked by what reviving or removing them would reclaim. |
 | **Manifests** | Every park, newest first, with a one-click Restore. |
 
 ## How attribution works
@@ -137,41 +174,6 @@ where each date actually came from:
 The UI shows the source next to every date rather than presenting all of them as
 equally firm.
 
-## Layout
-
-```
-server.js              HTTP server, snapshot assembly, plan/execute/restore
-lib/attribute.js       PID -> owner resolution, fan-out, origin tracing
-lib/guard.js           Kill guard — pure function, verdicts as data
-lib/manifest.js        Restore manifests, argv splitting, relaunch
-lib/probe.js           Gentle HTTP probing of local ports, cached
-config/protected.json  Your never-kill list (editable)
-manifests/             One JSON per park; the undo history
-test/                  Regression tests for every bug found in the field
-scripts/collect-fast.ps1   system + processes + ports   (4s TTL)
-scripts/collect-slow.ps1   startup + tasks + services   (5min TTL)
-public/                dashboard
-```
-
-## API
-
-| Method | Path | Effect |
-|---|---|---|
-| `GET` | `/api/snapshot` | Full state. Read-only. |
-| `GET` | `/api/manifests` | Park history. |
-| `POST` | `/api/plan` | Dry run. **Never kills.** Returns allowed, blocked, phrase. |
-| `POST` | `/api/execute` | The only path that kills. Needs `planId` + exact `confirm`. |
-| `POST` | `/api/restore` | Relaunch a manifest's victims. |
-| `POST` | `/api/persist/plan` | Dry run over startup entries. **Never changes anything.** |
-| `POST` | `/api/persist/execute` | Applies a confirmed persistence plan. |
-
-## Config
-
-| Variable | Default | Notes |
-|---|---|---|
-| `HANGAR_PORT` | `7420` | `set HANGAR_PORT=7421 && node server.js` |
-| `HANGAR_READONLY` | unset | `1` disables all write endpoints |
-
 ## Persistence control — the changes that actually stick
 
 Killing a process is temporary. On 2026-07-29 WSL was back within the hour
@@ -179,8 +181,8 @@ because a scheduled task relaunches it. The only cleanup on this machine that
 survived a reboot was configuration-level: the 07-30 session disabled plugins
 and removed extensions, and free RAM went from 632 MB to 6.9 GB permanently.
 
-The **Origins** tab now offers a reversible off switch per entry, behind the
-same dry-run + typed-confirmation gates as Park.
+The **Origins** tab offers a reversible off switch per entry, behind the same
+dry-run + typed-confirmation gates as Park.
 
 | Kind | Disable does | Undo |
 |---|---|---|
@@ -209,8 +211,74 @@ explicitly skipped rather than failing halfway — the `cowork-svc.exe`
 access-denied lesson from 07-29. To handle those, start the agent from an
 elevated shell.
 
-## Not in v0.3
+## Layout
 
-No Tauri port, no TUI, no Graveyard scanner, no autonomous modes. VRAM is not
-tracked (it became the binding constraint on this machine after system RAM was
-fixed).
+```
+server.js                    HTTP agent — snapshot, plan/execute/restore
+lib/attribute.js             PID -> owner resolution, fan-out, origin tracing
+lib/guard.js                 Kill guard — pure function, verdicts as data
+lib/manifest.js              Restore manifests, argv splitting, relaunch
+lib/graveyard.js             Dormant-project ranking
+lib/persistence.js           Startup-entry disable/enable, reversible
+lib/probe.js                 Gentle HTTP probing of local ports, cached
+
+crates/hangar-core/          Rust core — guard, attribution, persistence
+apps/desktop/src/            The dashboard (shared by both front ends)
+apps/desktop/src-tauri/      Tauri v2 shell — tray, windows, bundling
+
+config/protected.json        Your never-kill list (editable)
+manifests/                   One JSON per park; the undo history
+quarantine/startup/          Where disabled Startup files go — never deleted
+test/                        Regression tests for every bug found in the field
+scripts/collect-fast.ps1     system + processes + ports   (4s TTL)
+scripts/collect-slow.ps1     startup + tasks + services   (5min TTL)
+```
+
+## API
+
+| Method | Path | Effect |
+|---|---|---|
+| `GET` | `/api/snapshot` | Full state. Read-only. |
+| `GET` | `/api/manifests` | Park history. |
+| `POST` | `/api/plan` | Dry run. **Never kills.** Returns allowed, blocked, phrase. |
+| `POST` | `/api/execute` | The only path that kills. Needs `planId` + exact `confirm`. |
+| `POST` | `/api/restore` | Relaunch a manifest's victims. |
+| `POST` | `/api/persist/plan` | Dry run over startup entries. **Never changes anything.** |
+| `POST` | `/api/persist/execute` | Applies a confirmed persistence plan. |
+
+## Config
+
+| Variable | Default | Notes |
+|---|---|---|
+| `HANGAR_PORT` | `7420` | `set HANGAR_PORT=7421 && node server.js` |
+| `HANGAR_READONLY` | unset | `1` disables all write endpoints |
+
+## Build from source
+
+Requires [Rust](https://rustup.rs) and [Node 22+](https://nodejs.org).
+
+```bash
+git clone https://github.com/Army161/hangar.git
+cd hangar
+npm install
+
+npm run dev        # desktop app, hot reload
+npm run build      # installers into target/release/bundle/
+npm test           # node --test test/
+cargo test --workspace
+```
+
+Linux additionally needs `libwebkit2gtk-4.1-dev`, `libappindicator3-dev`,
+`librsvg2-dev` and `patchelf`.
+
+macOS and Linux installers **cannot** be cross-compiled from Windows — Tauri
+needs the native toolchain and Apple's signing tools only run on Darwin. The
+[release workflow](.github/workflows/release.yml) builds each on its own runner.
+
+## Docs
+
+Full guides at **[army161.github.io/hangar](https://army161.github.io/hangar/)**.
+
+## Licence
+
+UNLICENSED — all rights reserved.

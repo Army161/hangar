@@ -1,0 +1,109 @@
+name: Release
+
+# Builds Hangar for Windows, macOS (Intel + Apple Silicon) and Linux.
+#
+# macOS and Linux installers cannot be cross-compiled from a Windows machine —
+# Tauri needs the native toolchain and Apple's signing tools only run on Darwin.
+# Each target therefore builds on its own runner and uploads into one release.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to publish (e.g. v0.4.0)"
+        required: true
+
+jobs:
+  release:
+    permissions:
+      contents: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+            label: Windows x64
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+            label: macOS Apple Silicon
+          - platform: macos-latest
+            target: x86_64-apple-darwin
+            label: macOS Intel
+          - platform: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            label: Linux x64
+
+    runs-on: ${{ matrix.platform }}
+    name: ${{ matrix.label }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # WebKitGTK 4.1 is the Tauri v2 series. libappindicator backs the tray
+      # icon declared in tauri.conf.json; patchelf is required for AppImage.
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+          key: ${{ matrix.target }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install npm dependencies
+        run: npm ci || npm install
+
+      - name: Build and publish
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: apps/desktop
+          args: --target ${{ matrix.target }}
+          tagName: ${{ github.event.inputs.tag || github.ref_name }}
+          releaseName: "Hangar __VERSION__"
+          releaseBody: |
+            Why is this running, and what happens if I turn it off?
+
+            ### Install
+
+            | Platform | File |
+            |---|---|
+            | Windows | `.msi` or `-setup.exe` |
+            | macOS (Apple Silicon) | `_aarch64.dmg` |
+            | macOS (Intel) | `_x64.dmg` |
+            | Linux | `.AppImage` or `.deb` |
+
+            Hangar reads your local process table and never sends it anywhere.
+
+            See the [docs](https://army161.github.io/hangar/) for a full guide.
+          releaseDraft: true
+          prerelease: false

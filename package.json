@@ -1,4 +1,28 @@
 {
+  "name": "hangar",
+  "version": "0.4.0",
+  "private": true,
+  "description": "Why is this running, and what happens if I turn it off? Local process, port and origin map with a reversible off switch.",
+  "homepage": "https://army161.github.io/hangar/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Army161/hangar.git"
+  },
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "node server.js",
+    "serve": "node server.js",
+    "serve:readonly": "node -e \"process.env.HANGAR_READONLY='1';import('./server.js')\"",
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "build:debug": "tauri build --debug",
+    "test": "node --test test/",
+    "test:rust": "cargo test --workspace",
+    "lint:rust": "cargo clippy --workspace --all-targets -- -D warnings",
+    "fmt": "cargo fmt --all",
+    "storybook": "node docs/storybook/serve.js",
+    "docs": "node docs/serve.js"
+  },
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.4"
   }
