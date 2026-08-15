@@ -31,6 +31,65 @@ const { entryId, evaluatePersistence, describeAction, invertAction } = require('
 const { classifyProject, mergeWithLive, rankGraveyard } = require('./lib/graveyard');
 const settings = require('./lib/settings');
 const entitlements = require('./lib/entitlements');
+const agent = require('./lib/agent');
+const agentModels = require('./lib/agent/models');
+
+/**
+ * What the agent may actually call.
+ *
+ * Read-only by construction: every entry below reads the snapshot the dashboard
+ * already builds. Nothing here mutates, and the agent has no other route to the
+ * machine — the loop calls only what this map exposes.
+ */
+function agentHandlers() {
+  return {
+    list_owners: async ({ kind, sort, limit } = {}) => {
+      const snap = await buildSnapshot();
+      let owners = snap.owners || [];
+      if (kind) owners = owners.filter((o) => o.kind === kind);
+      const key = { mem: 'memMB', cpu: 'cpuPct', procs: 'procs' }[sort] || 'memMB';
+      owners = [...owners].sort((a, b) => (b[key] || 0) - (a[key] || 0));
+      return owners.slice(0, Math.min(Number(limit) || 25, 100)).map((o) => ({
+        owner: o.owner, kind: o.kind, memMB: o.memMB, cpuPct: o.cpuPct,
+        procs: o.procs, pids: (o.pids || []).slice(0, 8), protectedOwner: Boolean(o.protected),
+      }));
+    },
+
+    get_owner: async ({ key } = {}) => {
+      const snap = await buildSnapshot();
+      const o = (snap.owners || []).find((x) => x.key === key || x.owner === key);
+      return o || { error: `No owner matching "${key}".` };
+    },
+
+    trace_origin: async ({ pid } = {}) => {
+      const snap = await buildSnapshot();
+      const o = (snap.owners || []).find((x) => (x.pids || []).includes(Number(pid)));
+      return o ? { owner: o.owner, origin: o.origin || null } : { error: `pid ${pid} not found.` };
+    },
+
+    list_ports: async ({ liveOnly } = {}) => {
+      const snap = await buildSnapshot();
+      const ports = snap.ports || [];
+      return (liveOnly ? ports.filter((p) => p.live) : ports)
+        .map((p) => ({ port: p.port, owner: p.owner, kind: p.kind, title: p.title || null, live: Boolean(p.live) }));
+    },
+
+    list_persistence: async ({ kind } = {}) => {
+      const slow = await getSlow();
+      const entries = (slow && slow.entries) || [];
+      return (kind ? entries.filter((e) => e.kind === kind) : entries)
+        .map((e) => ({ id: e.id, name: e.name, kind: e.kind, added: e.added, addedSource: e.addedSource, cmd: e.cmd }));
+    },
+
+    list_manifests: async () => listManifests(),
+
+    scan_graveyard: async ({ refresh } = {}) => {
+      const g = await getGraveyard(Boolean(refresh));
+      if (!g) return { error: 'The graveyard sweep has not completed yet. Try again shortly.' };
+      return (g.projects || []).slice(0, 40);
+    },
+  };
+}
 
 const PORT = Number(process.env.HANGAR_PORT) || 7420;
 const ROOT = __dirname;
@@ -633,6 +692,59 @@ const server = http.createServer(async (req, res) => {
 
   if (url.pathname === '/api/manifests' && req.method === 'GET') {
     return json(res, 200, { manifests: listManifests() });
+  }
+
+  // --- agent ----------------------------------------------------------------
+  // Model discovery is live: Ollama and OpenAI-compatible providers are asked
+  // what they actually have, rather than a hardcoded list going stale.
+  if (url.pathname === '/api/agent/models' && req.method === 'GET') {
+    try {
+      const s = settings.load();
+      const keys = settings.agentKeys ? settings.agentKeys() : {};
+      const found = await agentModels.discoverAll(keys);
+      // VRAM comes from the fast collector (scripts/collect-fast.ps1 → vram.freeMB),
+      // the same source the header gauge reads. It is null on machines without a
+      // discrete GPU, and recommendLocal reports "unknown" rather than guessing.
+      const fast = await getFast().catch(() => null);
+      const freeVramGb = fast && fast.vram ? fast.vram.freeMB / 1024 : null;
+      return json(res, 200, {
+        providers: agentModels.PROVIDERS,
+        curated: agentModels.CURATED,
+        discovered: found.models,
+        reachable: found.providers,
+        vram: agentModels.recommendLocal(freeVramGb),
+        configured: Object.keys(keys),
+        enabled: s.integrations.agents.enabled,
+      });
+    } catch (e) {
+      noteError('agent models', e);
+      return json(res, 500, { error: e.message });
+    }
+  }
+
+  if (url.pathname === '/api/agent/chat' && req.method === 'POST') {
+    try {
+      const body = await readBody(req);
+      const model = (body && body.model) || {};
+      if (!model.provider || !model.id) return json(res, 400, { error: 'model.provider and model.id are required' });
+
+      // The key is looked up server-side by provider name. The client never
+      // sends it, so a key cannot leak through a chat request or its logs.
+      const keys = settings.agentKeys ? settings.agentKeys() : {};
+      const events = [];
+
+      const out = await agent.run({
+        model: { ...model, apiKey: keys[model.provider] },
+        messages: Array.isArray(body.messages) ? body.messages : [],
+        handlers: agentHandlers(),
+        onEvent: (e) => events.push(e),
+      });
+
+      return json(res, 200, { ...out, events });
+    } catch (e) {
+      noteError('agent chat', e);
+      return json(res, 500, { error: e.message });
+    }
   }
 
   // --- entitlement ----------------------------------------------------------
