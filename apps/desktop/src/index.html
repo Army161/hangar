@@ -28,6 +28,7 @@
     <div class="hdr-right">
       <div class="pulse" id="pulse"><i></i><span id="pulse-txt">starting…</span></div>
       <button class="icon-btn" id="refresh">Refresh</button>
+      <button class="icon-btn" id="chatos-open" aria-expanded="false">Agent</button>
       <button class="icon-btn" id="theme">Theme</button>
     </div>
   </div>
@@ -311,9 +312,42 @@
   </div>
 </div>
 
+<!-- ChatOS — dashboard left, agent right. Fixed rather than a flex sibling so
+     the existing layout is untouched when it is closed; <body> gets a class
+     that shrinks the content, so nothing overlaps. -->
+<aside class="chatos" id="chatos" hidden aria-label="Hangar agent">
+  <div class="chatos-resize" id="chatos-resize" role="separator" aria-orientation="vertical" tabindex="0"
+       aria-label="Resize agent panel"></div>
+
+  <header class="chatos-hd">
+    <span class="chatos-title">Agent</span>
+    <select id="chatos-model" aria-label="Model"></select>
+    <button class="icon-btn" id="chatos-close" aria-label="Close agent panel">✕</button>
+  </header>
+
+  <div class="chatos-vram" id="chatos-vram" hidden></div>
+
+  <div class="chatos-log" id="chatos-log">
+    <div class="chatos-empty">
+      <b>Ask about this machine.</b>
+      <p>“What's using the most memory?” · “What starts itself at boot?”
+         · “Which ports are answering HTTP?” · “What can I safely turn off?”</p>
+      <p class="chatos-note">The agent can read and plan. It cannot stop anything —
+         parking always needs you to type the confirmation phrase.</p>
+    </div>
+  </div>
+
+  <form class="chatos-in" id="chatos-form">
+    <textarea id="chatos-text" rows="2" placeholder="Ask about what's running…"
+              aria-label="Message the agent"></textarea>
+    <button class="icon-btn primary" id="chatos-send" type="submit">Send</button>
+  </form>
+</aside>
+
 <script src="/ipc.js"></script>
 <script src="/app.js"></script>
 <script src="/settings.js"></script>
+<script src="/chatos.js"></script>
 <script src="/pwa.js"></script>
 </body>
 </html>

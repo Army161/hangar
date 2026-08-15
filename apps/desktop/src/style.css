@@ -524,6 +524,114 @@ main { padding: 20px 22px 80px; max-width: 1560px; margin: 0 auto; }
 }
 .icon-btn.primary { background: var(--signal); color: #231802; border-color: transparent; font-weight: 600; }
 
+/* --- ChatOS ------------------------------------------------------------ */
+:root { --chatos-w: 420px; }
+
+/* Content shifts rather than being overlapped, so the table stays readable
+   while the agent is open. Transition only on margin — animating width would
+   reflow the whole process table on every frame. */
+body.chatos-open > header.hdr,
+body.chatos-open > main,
+body.chatos-open > .selbar,
+body.chatos-open > .persistbar { margin-right: var(--chatos-w); }
+body.chatos-open > header.hdr,
+body.chatos-open > main { transition: margin-right .18s ease; }
+
+.chatos {
+  position: fixed; top: 0; right: 0; bottom: 0; width: var(--chatos-w);
+  z-index: 70; display: flex; flex-direction: column;
+  background: var(--surface); border-left: 1px solid var(--line);
+  box-shadow: -8px 0 28px rgba(0, 0, 0, .10);
+}
+.chatos-resize {
+  position: absolute; left: -3px; top: 0; bottom: 0; width: 7px;
+  cursor: col-resize; background: transparent;
+}
+.chatos-resize:hover, .chatos-resize:focus-visible { background: var(--signal); outline: none; }
+
+.chatos-hd {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 12px; border-bottom: 1px solid var(--line-2); flex: none;
+}
+.chatos-title {
+  font-family: var(--display); font-size: 13px; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--fg-2); flex: none;
+}
+.chatos-hd select {
+  flex: 1; min-width: 0; background: var(--bg); color: var(--fg);
+  border: 1px solid var(--line); border-radius: 6px; padding: 4px 7px;
+  font: inherit; font-size: 12px;
+}
+
+.chatos-vram {
+  font-size: 11.5px; padding: 7px 12px; color: var(--warn);
+  background: var(--chip); border-bottom: 1px solid var(--line-2);
+}
+
+.chatos-log { flex: 1; overflow-y: auto; padding: 12px; }
+.chatos-empty { color: var(--fg-3); font-size: 12.5px; line-height: 1.6; }
+.chatos-empty b { display: block; color: var(--fg-2); margin-bottom: 5px; font-size: 13px; }
+.chatos-empty p { margin: 0 0 9px; }
+.chatos-note { border-left: 2px solid var(--signal); padding-left: 9px; }
+
+.msg { margin-bottom: 13px; font-size: 13.5px; line-height: 1.55; }
+.msg-you { color: var(--fg); }
+.msg-you b {
+  display: block; font-family: var(--display); font-size: 11px; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--fg-3); margin-bottom: 3px;
+}
+.msg-agent { color: var(--fg); }
+.msg-agent table { width: 100%; border-collapse: collapse; margin: 7px 0; font-size: 12px; }
+.msg-agent th, .msg-agent td { border: 1px solid var(--line-2); padding: 4px 7px; text-align: left; }
+.msg-agent th { background: var(--chip); font-weight: 600; }
+/* Anything quoting the machine is monospace — PLAN §8's brand rule, and it
+   also makes fenced untrusted content visually distinct from the agent's prose. */
+.msg-agent code, .msg-agent pre { font-family: var(--mono); font-size: 12px; }
+.msg-agent pre {
+  background: var(--bg); border: 1px solid var(--line-2); border-radius: 6px;
+  padding: 8px 10px; overflow-x: auto; white-space: pre-wrap;
+}
+
+/* Tool calls render as manifest rows, not raw JSON. */
+.msg-tool {
+  display: flex; align-items: center; gap: 8px; font-family: var(--mono);
+  font-size: 11px; color: var(--fg-2); padding: 4px 8px; margin-bottom: 5px;
+  border: 1px solid var(--line-2); border-radius: 5px; background: var(--surface-2);
+}
+.msg-tool .t-dot { width: 6px; height: 6px; border-radius: 1px; background: var(--good); flex: none; }
+.msg-tool.running .t-dot { background: var(--signal); }
+.msg-tool.err .t-dot { background: var(--alert); }
+.msg-tool .t-flag { color: var(--alert); margin-left: auto; }
+
+.msg-gate {
+  border: 1px solid var(--signal); border-radius: 7px; padding: 10px 12px;
+  font-size: 12.5px; background: var(--chip); margin-bottom: 12px;
+}
+.msg-gate b { display: block; margin-bottom: 3px; font-family: var(--display); letter-spacing: .03em; }
+
+.msg-err { color: var(--alert); font-size: 12.5px; margin-bottom: 12px; }
+
+.chatos-in {
+  flex: none; display: flex; gap: 8px; align-items: flex-end;
+  padding: 10px 12px; border-top: 1px solid var(--line-2);
+}
+.chatos-in textarea {
+  flex: 1; min-width: 0; resize: none; background: var(--bg); color: var(--fg);
+  border: 1px solid var(--line); border-radius: 7px; padding: 7px 9px;
+  font: inherit; font-size: 13px; line-height: 1.45; max-height: 160px;
+}
+.chatos-in textarea:focus-visible { outline: 2px solid var(--signal); outline-offset: 1px; }
+.chatos-in button { flex: none; }
+
+@media (max-width: 900px) {
+  :root { --chatos-w: 100vw; }
+  body.chatos-open > header.hdr,
+  body.chatos-open > main,
+  body.chatos-open > .selbar,
+  body.chatos-open > .persistbar { margin-right: 0; }
+  .chatos-resize { display: none; }
+}
+
 /* --- Plan / pricing --- */
 .plan-now { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; flex-wrap: wrap; }
 .plan-badge {
