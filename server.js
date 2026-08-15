@@ -29,13 +29,44 @@ const { evaluateKill } = require('./lib/guard');
 const { writeManifest, listManifests, restoreManifest, markRestored } = require('./lib/manifest');
 const { entryId, evaluatePersistence, describeAction, invertAction } = require('./lib/persistence');
 const { classifyProject, mergeWithLive, rankGraveyard } = require('./lib/graveyard');
+const settings = require('./lib/settings');
 
 const PORT = Number(process.env.HANGAR_PORT) || 7420;
-const HOST = '127.0.0.1';
 const ROOT = __dirname;
 const SCRIPTS = path.join(ROOT, 'scripts');
 const READ_ONLY = process.env.HANGAR_READONLY === '1';
-const VERSION = '0.2.0';
+const VERSION = '0.4.0';
+
+// --- remote access (for the installable phone/tablet client) ---------------
+//
+// Default is unchanged: loopback only, no token, nothing reachable off-box.
+//
+// Setting HANGAR_HOST binds wider, which puts a process-control API on your
+// network. That is refused unless HANGAR_TOKEN is also set, and the token must
+// be long enough to be worth having. Failing closed here is deliberate: the
+// mistake this prevents — exposing park/execute to the LAN unauthenticated —
+// is not one you get to notice and undo later.
+const HOST = process.env.HANGAR_HOST || '127.0.0.1';
+const TOKEN = process.env.HANGAR_TOKEN || '';
+const REMOTE = HOST !== '127.0.0.1' && HOST !== 'localhost';
+
+if (REMOTE && TOKEN.length < 24) {
+  console.error('\n  Refusing to start.\n');
+  console.error(`  HANGAR_HOST=${HOST} exposes this agent beyond loopback, so`);
+  console.error('  HANGAR_TOKEN must be set to at least 24 characters.\n');
+  console.error('  Generate one:');
+  console.error('    node -e "console.log(require(\'crypto\').randomBytes(24).toString(\'base64url\'))"\n');
+  process.exit(1);
+}
+
+// Timing-safe so the token cannot be recovered by measuring rejections.
+function tokenOk(req, url) {
+  if (!REMOTE) return true;
+  const given = (req.headers['x-hangar-token'] || url.searchParams.get('token') || '');
+  const a = Buffer.from(String(given));
+  const b = Buffer.from(TOKEN);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
 
 const FAST_TTL = 4000;      // process table: refresh at most every 4s
 const SLOW_TTL = 300_000;   // persistence surfaces: every 5 minutes
@@ -547,7 +578,17 @@ async function handlePersistExecute(body, res) {
 // ---------------------------------------------------------------------------
 // HTTP
 // ---------------------------------------------------------------------------
-const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
+const MIME = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.json': 'application/json; charset=utf-8',
+  // Served with the correct type or the browser silently ignores the manifest
+  // and the app is not installable.
+  '.webmanifest': 'application/manifest+json; charset=utf-8',
+};
 
 function serveStatic(res, rel) {
   const WEB_ROOT = path.join(ROOT, 'apps', 'desktop', 'src');
@@ -562,6 +603,15 @@ function serveStatic(res, rel) {
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${HOST}:${PORT}`);
+
+  // No-op on loopback. When bound wider, every request needs the token —
+  // assets included, so an unauthenticated caller cannot even confirm what is
+  // listening here.
+  if (!tokenOk(req, url)) {
+    res.writeHead(401, { 'Content-Type': 'text/plain', 'Cache-Control': 'no-store' })
+      .end('Unauthorized');
+    return;
+  }
 
   if (url.pathname === '/api/snapshot') {
     try {
@@ -582,6 +632,43 @@ const server = http.createServer(async (req, res) => {
 
   if (url.pathname === '/api/manifests' && req.method === 'GET') {
     return json(res, 200, { manifests: listManifests() });
+  }
+
+  // --- settings -------------------------------------------------------------
+  // Reads are always allowed. Writes respect HANGAR_READONLY like every other
+  // mutation: read-only means read-only, including preferences.
+  if (url.pathname === '/api/settings' && req.method === 'GET') {
+    return json(res, 200, {
+      settings: settings.load(),
+      protected: settings.loadProtected(),
+      runtime: { readOnly: READ_ONLY, remote: REMOTE, version: VERSION, host: HOST, port: PORT },
+    });
+  }
+
+  if (url.pathname === '/api/settings' && req.method === 'POST') {
+    if (READ_ONLY) return json(res, 403, { error: 'Hangar is running in read-only mode (HANGAR_READONLY=1).' });
+    try {
+      const body = await readBody(req);
+      const out = settings.save(body || {});
+      // Rejected keys are returned, not swallowed — a UI bug should be visible.
+      return json(res, 200, { ok: true, ...out });
+    } catch (e) {
+      noteError('settings write', e);
+      return json(res, 400, { error: e.message });
+    }
+  }
+
+  if (url.pathname === '/api/protected' && req.method === 'POST') {
+    if (READ_ONLY) return json(res, 403, { error: 'Hangar is running in read-only mode (HANGAR_READONLY=1).' });
+    try {
+      const body = await readBody(req);
+      const saved = settings.saveProtected(body || {});
+      state.fastAt = 0; // guard verdicts change, so drop the cached table
+      return json(res, 200, { ok: true, protected: saved });
+    } catch (e) {
+      noteError('protected write', e);
+      return json(res, 400, { error: e.message });
+    }
   }
 
   // Read-only. The Graveyard never writes, moves, or deletes anything.
@@ -679,6 +766,15 @@ server.listen(PORT, HOST, () => {
   console.log('  ───────────────────────────────────────────');
   console.log(`  Dashboard   http://localhost:${PORT}`);
   console.log(`  Host        ${os.hostname()}`);
+  if (REMOTE) {
+    const lan = Object.values(os.networkInterfaces()).flat()
+      .find((n) => n && n.family === 'IPv4' && !n.internal);
+    console.log(`  Remote      http://${lan ? lan.address : HOST}:${PORT}/?token=…`);
+    console.log('  Auth        token required on every request');
+    console.log('  ⚠  This agent is reachable from your network.');
+  } else {
+    console.log('  Remote      off — loopback only');
+  }
   console.log(READ_ONLY
     ? '  Mode        read-only — all write endpoints disabled'
     : '  Mode        guarded — park requires dry-run + typed confirmation;\n              manifests written before any kill; restore available');

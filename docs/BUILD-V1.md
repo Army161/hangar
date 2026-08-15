@@ -4,6 +4,19 @@ Concrete build order for the desktop product. Companion to [PLAN.md](PLAN.md),
 which holds the strategy, brand lock, and risk register.
 
 **Rule for every milestone:** it is not done until its acceptance test passes.
+
+> **Status note — 2026-08-15.** This document was written before M3 and describes
+> the layout as it was then. `public/` no longer exists: `2b97888` moved it to
+> `apps/desktop/src/` as a pure rename, and `52f9db1` shipped the Tauri shell.
+> Every mention of `public/` below is therefore historical — kept deliberately,
+> because a plan quietly edited to match its outcome stops being evidence of what
+> was intended. Read `public/` as `apps/desktop/src/` throughout.
+>
+> One correction the record should carry: `2b97888` promised the Node server's
+> static path would be "fixed in the next commit". It was not. `52f9db1` moved
+> the traversal guard to the new location but left the path join on the old one,
+> so every asset returned 403 while `/api/*` stayed healthy. Fixed in `d199112`,
+> with a CI smoke job added so the same class of bug cannot pass unnoticed again.
 The 38 existing JS tests are the behavioural contract — nothing replaces a JS
 module until its Rust port reproduces every case.
 

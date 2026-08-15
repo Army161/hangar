@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hangar — why is this running?</title>
+<meta name="description" content="Local process, port and origin map with a reversible off switch. Answers what Task Manager cannot: why is this running, and what happens if I turn it off?">
+<link rel="icon" href="assets/icon.png">
+<style>
+/* Tokens lifted verbatim from apps/desktop/src/style.css — one design system. */
+:root{
+  --petrol:#0E2B31; --petrol-2:#12363D; --petrol-3:#17424A;
+  --concrete:#E4E5E0; --paper:#F7F7F5; --ink:#101A1C; --signal:#E5A50A;
+  --bg:var(--concrete); --surface:var(--paper); --surface-2:#EDEEEA;
+  --fg:var(--ink); --fg-2:#5C6B6E; --fg-3:#8A9698;
+  --line:rgba(16,26,28,.14); --line-2:rgba(16,26,28,.07); --chip:rgba(16,26,28,.05);
+  --good:#2E7D5B; --warn:#B8830B; --alert:#C4362B;
+  --display:"Bahnschrift","DIN Alternate","Archivo Narrow","Liberation Sans Narrow",system-ui,sans-serif;
+  --body:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,sans-serif;
+  --mono:"Cascadia Mono","Cascadia Code",Consolas,ui-monospace,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:var(--petrol); --surface:var(--petrol-2); --surface-2:var(--petrol-3);
+    --fg:#E8EDEC; --fg-2:#8CA3A6; --fg-3:#62797D;
+    --line:rgba(232,237,236,.16); --line-2:rgba(232,237,236,.08); --chip:rgba(232,237,236,.07);
+    --good:#5CBF93; --warn:#E5A50A; --alert:#E5695C;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:var(--petrol); --surface:var(--petrol-2); --surface-2:var(--petrol-3);
+  --fg:#E8EDEC; --fg-2:#8CA3A6; --fg-3:#62797D;
+  --line:rgba(232,237,236,.16); --line-2:rgba(232,237,236,.08); --chip:rgba(232,237,236,.07);
+  --good:#5CBF93; --warn:#E5A50A; --alert:#E5695C;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);line-height:1.6;
+     -webkit-font-smoothing:antialiased}
+a{color:inherit}
+.wrap{max-width:1080px;margin:0 auto;padding:0 24px}
+
+/* ---- top bar ---- */
+.bar{position:sticky;top:0;z-index:20;background:var(--petrol);color:#E8EDEC;
+     border-bottom:1px solid rgba(232,237,236,.12)}
+.bar .wrap{display:flex;align-items:center;gap:20px;height:60px}
+.brand{font-family:var(--display);font-size:26px;letter-spacing:.02em;font-weight:600}
+.brand span{color:var(--signal)}
+.bar nav{margin-left:auto;display:flex;gap:22px;font-size:14px}
+.bar nav a{opacity:.8;text-decoration:none}
+.bar nav a:hover{opacity:1;color:var(--signal)}
+.tbtn{background:transparent;border:1px solid rgba(232,237,236,.22);color:inherit;
+      border-radius:6px;padding:5px 11px;font:inherit;font-size:13px;cursor:pointer}
+.tbtn:hover{border-color:var(--signal);color:var(--signal)}
+
+/* ---- hero ---- */
+.hero{background:linear-gradient(170deg,var(--petrol) 0%,var(--petrol-3) 100%);
+      color:#E8EDEC;padding:76px 0 68px;position:relative;overflow:hidden}
+.hero::after{content:"";position:absolute;inset:0;pointer-events:none;
+  background-image:linear-gradient(rgba(232,237,236,.045) 1px,transparent 1px),
+                   linear-gradient(90deg,rgba(232,237,236,.045) 1px,transparent 1px);
+  background-size:52px 52px;mask-image:radial-gradient(ellipse at 70% 0%,#000,transparent 72%)}
+.hero h1{font-family:var(--display);font-size:clamp(40px,7vw,68px);line-height:1.04;
+         margin:0 0 18px;letter-spacing:-.01em;max-width:16ch}
+.hero h1 em{font-style:normal;color:var(--signal)}
+.hero p{font-size:19px;opacity:.86;max-width:60ch;margin:0 0 30px}
+.cta{display:flex;gap:12px;flex-wrap:wrap;position:relative;z-index:2}
+.btn{display:inline-block;padding:12px 22px;border-radius:8px;text-decoration:none;
+     font-weight:600;font-size:15px;border:1px solid transparent;transition:transform .12s}
+.btn:hover{transform:translateY(-1px)}
+.btn-p{background:var(--signal);color:#231802}
+.btn-s{border-color:rgba(232,237,236,.3);color:#E8EDEC}
+
+/* ---- sections ---- */
+section{padding:64px 0;border-bottom:1px solid var(--line-2)}
+h2{font-family:var(--display);font-size:clamp(26px,3.4vw,36px);margin:0 0 10px;letter-spacing:-.005em}
+.lede{color:var(--fg-2);max-width:64ch;margin:0 0 30px;font-size:16.5px}
+.grid{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:22px}
+.card h3{font-family:var(--display);font-size:19px;margin:0 0 8px}
+.card p{margin:0;color:var(--fg-2);font-size:14.5px}
+.k{display:inline-block;width:26px;height:3px;border-radius:2px;background:var(--signal);margin-bottom:14px}
+
+table{width:100%;border-collapse:collapse;font-size:14.5px;margin:8px 0 0}
+th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line-2);vertical-align:top}
+th{font-family:var(--display);font-weight:600;font-size:13px;text-transform:uppercase;
+   letter-spacing:.06em;color:var(--fg-2)}
+tbody tr:hover{background:var(--chip)}
+code{font-family:var(--mono);font-size:.9em;background:var(--chip);padding:2px 6px;border-radius:4px}
+pre{background:var(--petrol);color:#E8EDEC;border-radius:10px;padding:18px 20px;overflow-x:auto;
+    font-family:var(--mono);font-size:13.5px;line-height:1.6;border:1px solid rgba(232,237,236,.1)}
+pre code{background:none;padding:0;color:inherit}
+
+.note{border-left:3px solid var(--signal);background:var(--chip);padding:14px 18px;
+      border-radius:0 8px 8px 0;margin:22px 0;font-size:14.5px;color:var(--fg-2)}
+.note b{color:var(--fg)}
+
+footer{padding:40px 0 60px;color:var(--fg-3);font-size:14px}
+footer a{color:var(--fg-2)}
+</style>
+</head>
+<body>
+
+<div class="bar"><div class="wrap">
+  <div class="brand">Han<span>gar</span></div>
+  <nav>
+    <a href="#install">Install</a>
+    <a href="#safety">Safety</a>
+    <a href="#views">Views</a>
+    <a href="storybook/">Components</a>
+    <a href="https://github.com/Army161/hangar">GitHub</a>
+  </nav>
+  <button class="tbtn" id="theme">Theme</button>
+</div></div>
+
+<div class="hero"><div class="wrap">
+  <h1>Why is this running, and <em>what happens if I turn it off?</em></h1>
+  <p>Task Manager tells you <code style="background:rgba(232,237,236,.12);color:#E8EDEC">node.exe ×76</code>.
+     Hangar tells you which seventy-six, who started them, when that was arranged,
+     and what breaks if you stop them.</p>
+  <div class="cta">
+    <a class="btn btn-p" href="https://github.com/Army161/hangar/releases/latest">Download 0.4.0</a>
+    <a class="btn btn-s" href="#install">All platforms</a>
+  </div>
+</div></div>
+
+<section id="install"><div class="wrap">
+  <h2>Install</h2>
+  <p class="lede">Signed installers for every desktop platform, built natively on
+     their own runner — macOS and Linux cannot be cross-compiled from Windows.</p>
+  <table>
+    <thead><tr><th>Platform</th><th>File</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>Windows</td><td><code>Hangar_0.4.0_x64-setup.exe</code></td><td>Per-user, no admin prompt</td></tr>
+      <tr><td>Windows (MSI)</td><td><code>Hangar_0.4.0_x64_en-US.msi</code></td><td>For managed deployment</td></tr>
+      <tr><td>macOS — Apple Silicon</td><td><code>Hangar_0.4.0_aarch64.dmg</code></td><td></td></tr>
+      <tr><td>macOS — Intel</td><td><code>Hangar_0.4.0_x64.dmg</code></td><td></td></tr>
+      <tr><td>Linux</td><td><code>hangar_0.4.0_amd64.AppImage</code></td><td>Also <code>.deb</code></td></tr>
+    </tbody>
+  </table>
+
+  <h3 style="font-family:var(--display);margin:32px 0 8px">Or run the web version</h3>
+  <p class="lede">Zero dependencies — pure Node stdlib, no <code>npm install</code>.</p>
+<pre><code>git clone https://github.com/Army161/hangar.git
+cd hangar
+node server.js      <span style="color:#8CA3A6"># then open http://localhost:7420</span></code></pre>
+</div></section>
+
+<section id="safety"><div class="wrap">
+  <h2>Three gates before anything dies</h2>
+  <p class="lede">Hangar can stop processes. Every kill passes all three, in order.</p>
+  <div class="grid">
+    <div class="card"><div class="k"></div><h3>1 — Dry run</h3>
+      <p>Returns exactly what would die and what the guard refuses, with a confirmation
+         phrase. Nothing is killed.</p></div>
+    <div class="card"><div class="k"></div><h3>2 — Typed confirmation</h3>
+      <p>Requires the plan id <em>and</em> the exact phrase. Plans are single-use and
+         expire after five minutes.</p></div>
+    <div class="card"><div class="k"></div><h3>3 — Re-evaluation</h3>
+      <p>The guard runs again on a fresh process table. PIDs recycle, so a plan is a
+         proposal, not a licence.</p></div>
+  </div>
+  <div class="note"><b>A restore manifest is written before the first kill.</b>
+     If the manifest cannot be written, nothing dies. Nothing is ever deleted —
+     disabled startup entries move to <code>quarantine/</code> and come back intact.</div>
+</div></section>
+
+<section id="views"><div class="wrap">
+  <h2>The views</h2>
+  <p class="lede">Six answers to six different questions about your machine.</p>
+  <table>
+    <thead><tr><th>View</th><th>What it answers</th></tr></thead>
+    <tbody>
+      <tr><td><b>Owners</b></td><td>What is actually running, grouped by the real thing that owns it — not <code>node.exe ×76</code>.</td></tr>
+      <tr><td><b>Port wall</b></td><td>Every listening port, probed for HTTP and labelled with its page title.</td></tr>
+      <tr><td><b>Origins</b></td><td>Everything configured to start itself, oldest first, with the date it was added.</td></tr>
+      <tr><td><b>Fan-out</b></td><td>The same thing running more than once, and what collapsing it would reclaim.</td></tr>
+      <tr><td><b>Graveyard</b></td><td>Projects that stopped being touched, ranked by what reviving or removing them reclaims.</td></tr>
+      <tr><td><b>Manifests</b></td><td>Every park, newest first, with one-click Restore.</td></tr>
+    </tbody>
+  </table>
+</div></section>
+
+<section><div class="wrap">
+  <h2>It never leaves the machine</h2>
+  <p class="lede">The desktop build has no TCP listener at all — the UI talks to the
+     Rust core over IPC. The web agent binds <code>127.0.0.1</code> only. There is no
+     telemetry, no account, and no upload path. Your process table is yours.</p>
+  <div class="note">Run with <code>HANGAR_READONLY=1</code> to disable every write
+     endpoint and use Hangar purely as an observer.</div>
+</div></section>
+
+<footer><div class="wrap">
+  Hangar 0.4.0 · <a href="https://github.com/Army161/hangar">github.com/Army161/hangar</a>
+  · <a href="storybook/">Component gallery</a>
+</div></footer>
+
+<script>
+const b=document.getElementById('theme'),r=document.documentElement;
+const saved=localStorage.getItem('hangar-docs-theme');
+if(saved)r.setAttribute('data-theme',saved);
+b.onclick=()=>{
+  const cur=r.getAttribute('data-theme')
+    ||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
+  const next=cur==='dark'?'light':'dark';
+  r.setAttribute('data-theme',next);localStorage.setItem('hangar-docs-theme',next);
+};
+</script>
+</body>
+</html>

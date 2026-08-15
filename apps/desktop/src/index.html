@@ -2,8 +2,20 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Hangar — local process, port &amp; origin map</title>
+
+<!-- Installable on phones and tablets. Inert in the Tauri build, which is
+     already an installed app — see pwa.js. -->
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#0E2B31">
+<meta name="color-scheme" content="light dark">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Hangar">
+<link rel="apple-touch-icon" href="/icons/icon-256.png">
+
 <link rel="stylesheet" href="/style.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%230E2B31'/><path d='M4 22h24v3H4z' fill='%23E5A50A'/><path d='M8 20l8-12 8 12z' fill='%23E5A50A'/></svg>">
 </head>
@@ -29,6 +41,7 @@
     <button class="tab" role="tab" data-view="fanout"  aria-selected="false">Fan-out <b id="c-fanout">—</b></button>
     <button class="tab" role="tab" data-view="graveyard" aria-selected="false">Graveyard <b id="c-graveyard">—</b></button>
     <button class="tab" role="tab" data-view="manifests" aria-selected="false">Manifests <b id="c-manifests">—</b></button>
+    <button class="tab" role="tab" data-view="settings" aria-selected="false">Settings</button>
   </nav>
 </header>
 
@@ -131,6 +144,104 @@
       recorded commands — best effort: it brings the program back, not its in-memory state.</p>
     <div class="tl" id="manifests"><div class="empty">No manifests yet. Nothing has been parked.</div></div>
   </section>
+
+  <section id="view-settings" hidden>
+    <div class="set-grid">
+
+      <div class="set-card">
+        <h3>Appearance</h3>
+        <p class="set-help">Theme also follows your OS when set to System.</p>
+        <label class="set-row"><span>Theme</span>
+          <select id="s-theme">
+            <option value="system">System</option>
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select>
+        </label>
+        <label class="set-row"><span>Density</span>
+          <select id="s-density">
+            <option value="comfortable">Comfortable</option>
+            <option value="compact">Compact</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="set-card">
+        <h3>Collection</h3>
+        <p class="set-help">How often each collector may re-run. Lower means fresher
+          data and more PowerShell spawns.</p>
+        <label class="set-row"><span>Process table</span>
+          <input type="number" id="s-fast" min="1000" max="60000" step="500"><em>ms</em>
+        </label>
+        <label class="set-row"><span>Startup &amp; services</span>
+          <input type="number" id="s-slow" min="30000" max="3600000" step="30000"><em>ms</em>
+        </label>
+        <label class="set-row set-check"><input type="checkbox" id="s-probe">
+          <span>Probe local ports for HTTP</span>
+        </label>
+      </div>
+
+      <div class="set-card set-wide">
+        <h3>Never kill</h3>
+        <p class="set-help">Your editable protection list. The system-critical list
+          lives in code and cannot be overridden here. One entry per line — names
+          match process-name prefixes, projects match anywhere in the command line.</p>
+        <div class="set-two">
+          <label class="set-block"><span>Apps</span>
+            <textarea id="s-names" rows="8" spellcheck="false"></textarea>
+          </label>
+          <label class="set-block"><span>Projects</span>
+            <textarea id="s-projects" rows="8" spellcheck="false"></textarea>
+          </label>
+        </div>
+        <button class="icon-btn" id="s-save-protected">Save protection list</button>
+        <span class="set-stat" id="s-protected-stat"></span>
+      </div>
+
+      <div class="set-card">
+        <h3>Amplitude</h3>
+        <p class="set-help">Optional. Sends <b>your own</b> usage events to your
+          Amplitude project. Nothing from the process table is ever included.</p>
+        <label class="set-row set-check"><input type="checkbox" id="s-amp-on">
+          <span>Enabled</span>
+        </label>
+        <label class="set-row"><span>Server zone</span>
+          <select id="s-amp-zone"><option value="US">US</option><option value="EU">EU</option></select>
+        </label>
+        <label class="set-block"><span>API key</span>
+          <input type="password" id="s-amp-key" autocomplete="off" placeholder="paste key">
+        </label>
+        <p class="set-help">Stored in <code>config/settings.local.json</code>, which is
+          gitignored, and never sent back to this page in full.</p>
+      </div>
+
+      <div class="set-card">
+        <h3>Agent connectors</h3>
+        <p class="set-help">Local agent endpoints Hangar may call. <b>Loopback only</b> —
+          remote URLs are refused, because the agent process dials these itself.</p>
+        <label class="set-row set-check"><input type="checkbox" id="s-agents-on">
+          <span>Enabled</span>
+        </label>
+        <div id="s-agents-list" class="set-list"></div>
+        <div class="set-row set-add">
+          <input type="text" id="s-agent-label" placeholder="Label" maxlength="80">
+          <input type="text" id="s-agent-url" placeholder="http://localhost:…">
+          <button class="icon-btn" id="s-agent-add">Add</button>
+        </div>
+      </div>
+
+      <div class="set-card set-wide">
+        <h3>Runtime</h3>
+        <div class="set-runtime" id="s-runtime"></div>
+      </div>
+
+    </div>
+
+    <div class="set-foot">
+      <button class="icon-btn primary" id="s-save">Save settings</button>
+      <span class="set-stat" id="s-stat"></span>
+    </div>
+  </section>
 </main>
 
 <!-- Selection action bar -->
@@ -168,5 +279,7 @@
 
 <script src="/ipc.js"></script>
 <script src="/app.js"></script>
+<script src="/settings.js"></script>
+<script src="/pwa.js"></script>
 </body>
 </html>
