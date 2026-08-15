@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hangar — component gallery</title>
+<link rel="icon" href="../assets/icon.png">
+
+<!-- The real app stylesheet, copied verbatim by docs/serve.js and the Pages
+     workflow. Every swatch and component below is the production CSS, so this
+     gallery cannot drift from the product it documents. -->
+<link rel="stylesheet" href="../assets/style.css">
+
+<style>
+/* Gallery chrome only. Anything that styles a *component* belongs in the app
+   stylesheet, never here — otherwise the gallery starts lying. */
+body { background: var(--bg); color: var(--fg); font-family: var(--body); margin: 0; }
+.gb-bar {
+  position: sticky; top: 0; z-index: 100; display: flex; align-items: center; gap: 16px;
+  background: var(--petrol); color: #E8EDEC; padding: 0 20px; height: 56px;
+  border-bottom: 1px solid rgba(232,237,236,.12);
+}
+.gb-bar .brand { font-family: var(--display); font-size: 22px; }
+.gb-bar .brand span { color: var(--signal); }
+.gb-bar .sp { flex: 1; }
+.gb-btn {
+  background: transparent; border: 1px solid rgba(232,237,236,.22); color: inherit;
+  border-radius: 6px; padding: 5px 11px; font: inherit; font-size: 13px; cursor: pointer;
+}
+.gb-btn:hover { border-color: var(--signal); color: var(--signal); }
+.gb-btn[aria-pressed="true"] { background: var(--signal); color: #231802; border-color: transparent; }
+
+.gb-wrap { display: grid; grid-template-columns: 210px minmax(0,1fr); }
+.gb-nav {
+  position: sticky; top: 56px; align-self: start; height: calc(100vh - 56px);
+  overflow-y: auto; padding: 18px 10px 40px; border-right: 1px solid var(--line-2);
+}
+.gb-nav a {
+  display: block; padding: 6px 10px; border-radius: 6px; text-decoration: none;
+  color: var(--fg-2); font-size: 13px;
+}
+.gb-nav a:hover { background: var(--chip); color: var(--fg); }
+.gb-nav h4 {
+  font-family: var(--display); font-size: 11px; text-transform: uppercase;
+  letter-spacing: .1em; color: var(--fg-3); margin: 16px 10px 6px;
+}
+.gb-main { padding: 24px 28px 80px; max-width: 1100px; }
+
+.gb-story { margin-bottom: 34px; scroll-margin-top: 72px; }
+.gb-story > h3 {
+  font-family: var(--display); font-size: 17px; margin: 0 0 4px; letter-spacing: .01em;
+}
+.gb-story > p { margin: 0 0 12px; color: var(--fg-2); font-size: 13.5px; max-width: 70ch; line-height: 1.55; }
+.gb-canvas {
+  border: 1px solid var(--line); border-radius: 10px; padding: 18px;
+  background: var(--surface); overflow-x: auto;
+}
+.gb-canvas.plain { background: var(--bg); }
+.gb-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+
+.gb-code {
+  margin: 8px 0 0; background: var(--petrol); color: #E8EDEC; border-radius: 8px;
+  padding: 12px 14px; font-family: var(--mono); font-size: 12px; line-height: 1.6;
+  overflow-x: auto; border: 1px solid rgba(232,237,236,.1); white-space: pre;
+}
+details.gb-src > summary {
+  cursor: pointer; font-size: 12px; color: var(--fg-3); padding: 6px 0; user-select: none;
+}
+details.gb-src > summary:hover { color: var(--signal); }
+
+.gb-swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px,1fr)); gap: 10px; }
+.gb-sw { border: 1px solid var(--line-2); border-radius: 8px; overflow: hidden; }
+.gb-sw i { display: block; height: 46px; }
+.gb-sw b { display: block; font-family: var(--mono); font-size: 11px; padding: 6px 8px 1px; font-weight: 500; }
+.gb-sw small { display: block; font-family: var(--mono); font-size: 10px; color: var(--fg-3); padding: 0 8px 7px; }
+
+.gb-type > div { margin-bottom: 10px; }
+.gb-type span { display: block; font-size: 10.5px; color: var(--fg-3); font-family: var(--mono); }
+</style>
+</head>
+<body>
+
+<div class="gb-bar">
+  <div class="brand">Han<span>gar</span></div>
+  <span style="font-size:12.5px;opacity:.7">component gallery</span>
+  <span class="sp"></span>
+  <button class="gb-btn" id="gb-theme">Theme</button>
+  <a class="gb-btn" href="../" style="text-decoration:none">← Docs</a>
+</div>
+
+<div class="gb-wrap">
+  <nav class="gb-nav" id="gb-nav"></nav>
+  <main class="gb-main" id="gb-main"></main>
+</div>
+
+<script>
+/* Each story is { id, title, note, html }. The same string is rendered live and
+   shown as source, so the snippet can never disagree with what you see. */
+const STORIES = [
+
+{ group: 'Foundations' },
+
+{ id: 'colour', title: 'Colour', note: 'Petrol ground, safety-yellow signal. Every value is a token — the gallery reads them off :root at runtime, so this grid updates itself when the palette changes.', custom: 'swatches' },
+
+{ id: 'type', title: 'Typography', note: 'Bahnschrift for display and numerals, Segoe UI for body, Cascadia for anything a machine produced.', custom: 'type' },
+
+{ id: 'kinds', title: 'Kind colours', note: 'Every owner is classified, and the classification carries one colour everywhere it appears — owner row, port wall, origin trace.',
+  html: `<div class="gb-row">
+  <span class="chip k-mcp">mcp</span>
+  <span class="chip k-agent">agent</span>
+  <span class="chip k-runtime">runtime</span>
+  <span class="chip k-project">project</span>
+  <span class="chip k-devtool">devtool</span>
+  <span class="chip k-app">app</span>
+  <span class="chip k-system">system</span>
+  <span class="chip k-shell">shell</span>
+</div>` },
+
+{ group: 'Controls' },
+
+{ id: 'buttons', title: 'Buttons', note: 'One neutral button and one accent. The accent is reserved for the primary action in a view — never two on screen at once.',
+  html: `<div class="gb-row">
+  <button class="icon-btn">Refresh</button>
+  <button class="icon-btn primary">Save settings</button>
+  <button class="icon-btn" disabled>Disabled</button>
+</div>` },
+
+{ id: 'seg', title: 'Segmented control', note: 'Sort and filter. Pressed state is carried by aria-pressed, not a class, so the control is readable to a screen reader without extra markup.',
+  html: `<div class="gb-row">
+  <div class="seg" role="group" aria-label="Sort">
+    <button data-sort="memMB" aria-pressed="true">Memory</button>
+    <button data-sort="cpuPct" aria-pressed="false">CPU</button>
+    <button data-sort="procs" aria-pressed="false">Count</button>
+    <button data-sort="owner" aria-pressed="false">Name</button>
+  </div>
+  <div class="seg" role="group" aria-label="Filter">
+    <button aria-pressed="true">All</button>
+    <button aria-pressed="false">Mine</button>
+    <button aria-pressed="false">MCP</button>
+  </div>
+</div>` },
+
+{ id: 'search', title: 'Search', note: 'Filters the current view as you type.',
+  html: `<input class="search" placeholder="filter owners, e.g. mcp, openclaw, python">` },
+
+{ id: 'tabs', title: 'Tabs', note: 'The six views plus Settings. The count next to each label is live.',
+  html: `<nav class="tabs" role="tablist">
+  <button class="tab" role="tab" aria-selected="true">Owners <b>72</b></button>
+  <button class="tab" role="tab" aria-selected="false">Port wall <b>59</b></button>
+  <button class="tab" role="tab" aria-selected="false">Origins <b>64</b></button>
+  <button class="tab" role="tab" aria-selected="false">Fan-out <b>10</b></button>
+  <button class="tab" role="tab" aria-selected="false">Graveyard <b>—</b></button>
+  <button class="tab" role="tab" aria-selected="false">Manifests <b>3</b></button>
+  <button class="tab" role="tab" aria-selected="false">Settings</button>
+</nav>` },
+
+{ group: 'Data display' },
+
+{ id: 'gauges', title: 'Gauges', note: 'The header strip. Numerals are tabular, so the digits do not jitter as values update.',
+  html: `<div class="gauges">
+  <div class="g"><span class="n">508</span><span class="l">processes</span><div class="bar"><i style="width:62%"></i></div></div>
+  <div class="g hot"><span class="n">26.2<small>/31.9 GB</small></span><span class="l">memory held</span><div class="bar"><i class="crit" style="width:82%"></i></div></div>
+  <div class="g"><span class="n">72</span><span class="l">distinct owners</span><div class="bar"><i style="width:40%"></i></div></div>
+  <div class="g"><span class="n">10</span><span class="l">duplicated owners</span><div class="bar"><i style="width:24%"></i></div></div>
+</div>` },
+
+{ id: 'row', title: 'Owner row', note: 'The core unit of the Owners view. A protected owner shows a dot instead of a checkbox — protection is stated in the affordance, not hidden behind an error after you try.',
+  html: `<div class="rows">
+  <div class="row-h">
+    <span></span><span>Owner</span><span>Memory</span><span class="cpu-h">CPU now</span><span>Procs</span><span>Origin</span>
+  </div>
+  <div class="row" role="button" tabindex="0" aria-expanded="false">
+    <span class="dot" style="background:var(--k-system)" title="protected"></span>
+    <span class="name-cell">
+      <span class="name"><span class="txt">WSL 2</span> <span class="chip k-system">system</span> <span class="chip port">:5432 :6379</span></span>
+      <span class="sub">7 roots · pid 4836, 3968, 2280</span>
+    </span>
+    <span class="num">8.11 GB</span>
+    <span class="num cpu-cell">0.0%</span>
+    <span class="num">25</span>
+    <span class="origin-cell"><em>launched by hand</em></span>
+  </div>
+  <div class="row" role="button" tabindex="0" aria-expanded="false">
+    <span class="row-check"><input type="checkbox" aria-label="Select chrome"></span>
+    <span class="name-cell">
+      <span class="name"><span class="txt">chrome</span> <span class="chip k-app">app</span></span>
+      <span class="sub">1 root · pid 106440</span>
+    </span>
+    <span class="num">2.23 GB</span>
+    <span class="num cpu-cell">0.0%</span>
+    <span class="num">29</span>
+    <span class="origin-cell">GoogleChromeAutoLaunch <span class="chip">likely</span></span>
+  </div>
+</div>` },
+
+{ id: 'card', title: 'Port card', note: 'One listening port. A card that answered HTTP is accented and clickable; a dark port is stated as such rather than left ambiguous.',
+  html: `<div class="wall" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px">
+  <div class="card live">
+    <div class="card-hd"><b>7420</b> <span class="chip solid">302 other</span></div>
+    <div class="card-title">Hangar — local process, port &amp; origin map</div>
+    <div class="card-meta"><span class="chip k-project">project</span> task manager and terminal check</div>
+    <div class="card-ft"><a href="#">http://localhost:7420 ↗</a></div>
+  </div>
+  <div class="card dark-port">
+    <div class="card-hd"><b>5432</b> <span class="chip">not probed</span></div>
+    <div class="card-title"><em>Not an HTTP server</em></div>
+    <div class="card-meta"><span class="chip k-system">system</span> WSL 2</div>
+    <div class="card-ft">pid 15852 · wslrelay.exe · 5 MB</div>
+  </div>
+</div>` },
+
+{ id: 'timeline', title: 'Origin row', note: 'One startup entry. The date carries its own provenance — an exact file date and an approximate binary date are never presented as equally firm.',
+  html: `<div class="tl">
+  <div class="tl-row">
+    <span class="tl-date">Aug 11, 2026</span>
+    <span class="tl-marker"></span>
+    <span class="tl-name">Docker Desktop <span class="chip k-app">app</span></span>
+    <span class="tl-age">4d ago</span>
+    <span class="tl-cmd">"C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe" -Autostart</span>
+  </div>
+  <div class="tl-row">
+    <span class="tl-date">Mar 26, 2026</span>
+    <span class="tl-marker"></span>
+    <span class="tl-name">SecurityHealth <span class="chip k-system">system</span></span>
+    <span class="tl-age">5mo ago</span>
+    <span class="tl-cmd">%windir%\\system32\\SecurityHealthSystray.exe</span>
+  </div>
+</div>` },
+
+{ id: 'fanout', title: 'Fan-out', note: 'The same thing running more than once, and what collapsing it would give back.',
+  html: `<div class="fan">
+  <div><span>tradingview-mcp <span class="chip k-mcp">mcp</span></span><span class="num">8× copies</span><span class="num">16 procs</span><span class="num">267 MB</span></div>
+  <div><span>OneDrive <span class="chip k-app">app</span></span><span class="num">3× copies</span><span class="num">10 procs</span><span class="num">161 MB</span></div>
+</div>` },
+
+{ group: 'Feedback' },
+
+{ id: 'status', title: 'Status', note: 'Binary outcome after an action.',
+  html: `<div class="gb-row">
+  <span class="st ok">restored</span>
+  <span class="st no">blocked</span>
+  <span class="off-chip">disabled at startup</span>
+  <span class="badge-ro">read-only</span>
+</div>` },
+
+{ id: 'pulse', title: 'Pulse', note: 'Collector heartbeat in the header.',
+  html: `<div class="pulse"><i></i><span>updated 7:20:13 AM</span></div>` },
+
+{ id: 'note', title: 'Note &amp; empty', note: 'Standing explanation, and the state a view shows before data arrives. Empty states say what is happening, not just that nothing is here.',
+  html: `<p class="note">Every park writes a manifest here before anything dies. Restore relaunches the recorded commands — best effort: it brings the program back, not its in-memory state.</p>
+<div class="empty">Reading the process table…</div>
+<p class="hint">click a row to expand</p>` },
+
+{ group: 'Overlays' },
+
+{ id: 'selbar', title: 'Selection bar', note: 'Appears when rows are ticked. Fixed to the bottom so it never moves as the table updates underneath.',
+  html: `<div class="selbar" style="position:static;transform:none;display:flex">
+  <span><b>3</b> selected</span>
+  <button class="icon-btn btn-park">Park 3…</button>
+  <button class="icon-btn">Clear</button>
+</div>` },
+
+{ id: 'modal', title: 'Modal — dry run', note: 'Gate two of three. The phrase must be typed exactly; the plan is single-use and expires after five minutes. <b>This element must carry the hidden attribute when closed</b> — see test/hidden.test.js.',
+  html: `<div class="modal-wrap" style="position:static;background:none;padding:0;display:block">
+  <div class="modal" style="max-height:none">
+    <div class="modal-hd"><h3 id="modal-title">Park — dry run</h3></div>
+    <div class="modal-bd">
+      <div class="plan-sec">
+        <div class="plan-list">
+          <div><span class="st ok">will stop</span> <span>tradingview-mcp</span> <span class="num">267 MB</span></div>
+          <div><span class="st no">blocked</span> <span>MetaTrader — in protected.json</span> <span class="num">—</span></div>
+        </div>
+        <div class="plan-total">1 of 2 will stop · 267 MB reclaimed</div>
+      </div>
+    </div>
+    <div class="confirm-row">
+      <span class="hint">Type <b>PARK 1</b> to execute. A restore manifest is written first; nothing dies without it.</span>
+      <input class="search" placeholder="PARK 1">
+      <button class="icon-btn primary">Execute</button>
+    </div>
+    <div class="modal-foot"><button class="icon-btn">Close</button></div>
+  </div>
+</div>` },
+
+{ group: 'Settings' },
+
+{ id: 'setcard', title: 'Settings card', note: 'One concern per card. Help text sits under the heading, never as a tooltip.',
+  html: `<div class="set-grid" style="padding:0">
+  <div class="set-card">
+    <h3>Collection</h3>
+    <p class="set-help">How often each collector may re-run. Lower means fresher data and more PowerShell spawns.</p>
+    <label class="set-row"><span>Process table</span><input type="number" value="4000"><em>ms</em></label>
+    <label class="set-row"><span>Startup &amp; services</span><input type="number" value="300000"><em>ms</em></label>
+    <label class="set-row set-check"><input type="checkbox" checked><span>Probe local ports for HTTP</span></label>
+  </div>
+  <div class="set-card">
+    <h3>Agent connectors</h3>
+    <p class="set-help">Local agent endpoints Hangar may call. <b>Loopback only</b> — remote URLs are refused, because the agent process dials these itself.</p>
+    <div class="set-list">
+      <div class="ep"><b>Local LLM</b><code>http://localhost:11434</code><button>Remove</button></div>
+    </div>
+    <div class="set-row set-add">
+      <input type="text" placeholder="Label"><input type="text" placeholder="http://localhost:…"><button class="icon-btn">Add</button>
+    </div>
+  </div>
+</div>` },
+
+{ id: 'runtime', title: 'Runtime readout', note: 'What the agent is actually doing right now, stated plainly.',
+  html: `<div class="set-card"><h3>Runtime</h3><div class="set-runtime">
+  <div><span>Version</span><b>0.4.0</b></div>
+  <div><span>Mode</span><b>guarded writes</b></div>
+  <div><span>Binding</span><b>127.0.0.1:7420</b></div>
+  <div><span>Remote</span><b>off — loopback only</b></div>
+</div></div>` },
+];
+
+// --- render ------------------------------------------------------------------
+
+const main = document.getElementById('gb-main');
+const nav = document.getElementById('gb-nav');
+
+function esc(s) {
+  return s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+}
+
+function swatches() {
+  const cs = getComputedStyle(document.documentElement);
+  const names = ['--petrol','--petrol-2','--petrol-3','--concrete','--paper','--ink','--signal',
+    '--bg','--surface','--surface-2','--fg','--fg-2','--fg-3','--good','--warn','--alert',
+    '--k-mcp','--k-agent','--k-runtime','--k-project','--k-devtool','--k-app','--k-system','--k-shell'];
+  return `<div class="gb-swatches">${names.map((n) => {
+    const v = cs.getPropertyValue(n).trim();
+    return `<div class="gb-sw"><i style="background:${v}"></i><b>${n}</b><small>${v || '—'}</small></div>`;
+  }).join('')}</div>`;
+}
+
+function typeSpec() {
+  return `<div class="gb-type">
+    <div><span>--display · Bahnschrift</span><div style="font-family:var(--display);font-size:34px;line-height:1.1">Why is this running?</div></div>
+    <div><span>--display · tabular numerals</span><div style="font-family:var(--display);font-size:28px;font-variant-numeric:tabular-nums">508 · 26.2 GB · 32h 25m</div></div>
+    <div><span>--body · Segoe UI</span><div style="font-size:15px">Attribution, a live port wall, dated origin traces, and a reversible off switch.</div></div>
+    <div><span>--mono · Cascadia</span><div style="font-family:var(--mono);font-size:13px">C:\\Program Files\\Docker\\Docker Desktop.exe -Autostart</div></div>
+  </div>`;
+}
+
+let navHtml = '';
+let mainHtml = '';
+
+for (const s of STORIES) {
+  if (s.group) { navHtml += `<h4>${s.group}</h4>`; continue; }
+  navHtml += `<a href="#${s.id}">${s.title.replace(/&amp;/g, '&')}</a>`;
+
+  const body = s.custom === 'swatches' ? swatches()
+             : s.custom === 'type' ? typeSpec()
+             : s.html;
+
+  mainHtml += `<section class="gb-story" id="${s.id}">
+    <h3>${s.title}</h3>
+    <p>${s.note}</p>
+    <div class="gb-canvas${s.custom ? ' plain' : ''}">${body}</div>
+    ${s.html ? `<details class="gb-src"><summary>Markup</summary><pre class="gb-code">${esc(s.html)}</pre></details>` : ''}
+  </section>`;
+}
+
+nav.innerHTML = navHtml;
+main.innerHTML = mainHtml;
+
+// Theme toggle mirrors the app's own contract: data-theme wins over the media query.
+const root = document.documentElement;
+const saved = localStorage.getItem('hangar-gallery-theme');
+if (saved) root.setAttribute('data-theme', saved);
+document.getElementById('gb-theme').onclick = () => {
+  const cur = root.getAttribute('data-theme')
+    || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  const next = cur === 'dark' ? 'light' : 'dark';
+  root.setAttribute('data-theme', next);
+  localStorage.setItem('hangar-gallery-theme', next);
+  // Swatches are read from the cascade, so they must be re-read after a swap.
+  document.querySelector('#colour .gb-canvas').innerHTML = swatches();
+};
+</script>
+</body>
+</html>

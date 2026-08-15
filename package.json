@@ -20,7 +20,7 @@
     "test:rust": "cargo test --workspace",
     "lint:rust": "cargo clippy --workspace --all-targets -- -D warnings",
     "fmt": "cargo fmt --all",
-    "storybook": "node docs/storybook/serve.js",
+    "storybook": "node docs/serve.js",
     "docs": "node docs/serve.js"
   },
   "devDependencies": {

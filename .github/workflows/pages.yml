@@ -26,12 +26,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # The app icon doubles as the docs favicon — copied rather than duplicated
-      # so the two can never drift apart.
+      # The gallery renders against the real app stylesheet, and the icon doubles
+      # as the docs favicon. Both are copied rather than duplicated in the repo,
+      # so the documentation cannot drift from the product. docs/serve.js does
+      # exactly the same copy locally, keeping local and deployed identical.
       - name: Stage assets
         run: |
           mkdir -p docs/assets
           cp apps/desktop/src-tauri/icons/icon.png docs/assets/icon.png
+          cp apps/desktop/src/style.css docs/assets/style.css
+
+      - name: Assert the gallery has its stylesheet
+        run: |
+          test -s docs/assets/style.css
+          grep -q -- '--signal' docs/assets/style.css
+          diff -q docs/assets/style.css apps/desktop/src/style.css
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
