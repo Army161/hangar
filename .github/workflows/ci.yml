@@ -42,7 +42,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node --test test/
+      # Quoted so Node expands the glob itself — `node --test test/` resolves
+      # the directory as a module path on Node 24 and fails to load.
+      - run: node --test "test/*.test.js"
 
   # The 403 regression this repo shipped in 52f9db1 was invisible to the API
   # tests: /api/* stayed healthy while every asset returned Forbidden. This job

@@ -29,6 +29,7 @@ const { evaluateKill } = require('./lib/guard');
 const { writeManifest, listManifests, restoreManifest, markRestored } = require('./lib/manifest');
 const { entryId, evaluatePersistence, describeAction, invertAction } = require('./lib/persistence');
 const { classifyProject, mergeWithLive, rankGraveyard } = require('./lib/graveyard');
+const settings = require('./lib/settings');
 
 const PORT = Number(process.env.HANGAR_PORT) || 7420;
 const ROOT = __dirname;
@@ -631,6 +632,43 @@ const server = http.createServer(async (req, res) => {
 
   if (url.pathname === '/api/manifests' && req.method === 'GET') {
     return json(res, 200, { manifests: listManifests() });
+  }
+
+  // --- settings -------------------------------------------------------------
+  // Reads are always allowed. Writes respect HANGAR_READONLY like every other
+  // mutation: read-only means read-only, including preferences.
+  if (url.pathname === '/api/settings' && req.method === 'GET') {
+    return json(res, 200, {
+      settings: settings.load(),
+      protected: settings.loadProtected(),
+      runtime: { readOnly: READ_ONLY, remote: REMOTE, version: VERSION, host: HOST, port: PORT },
+    });
+  }
+
+  if (url.pathname === '/api/settings' && req.method === 'POST') {
+    if (READ_ONLY) return json(res, 403, { error: 'Hangar is running in read-only mode (HANGAR_READONLY=1).' });
+    try {
+      const body = await readBody(req);
+      const out = settings.save(body || {});
+      // Rejected keys are returned, not swallowed — a UI bug should be visible.
+      return json(res, 200, { ok: true, ...out });
+    } catch (e) {
+      noteError('settings write', e);
+      return json(res, 400, { error: e.message });
+    }
+  }
+
+  if (url.pathname === '/api/protected' && req.method === 'POST') {
+    if (READ_ONLY) return json(res, 403, { error: 'Hangar is running in read-only mode (HANGAR_READONLY=1).' });
+    try {
+      const body = await readBody(req);
+      const saved = settings.saveProtected(body || {});
+      state.fastAt = 0; // guard verdicts change, so drop the cached table
+      return json(res, 200, { ok: true, protected: saved });
+    } catch (e) {
+      noteError('protected write', e);
+      return json(res, 400, { error: e.message });
+    }
   }
 
   // Read-only. The Graveyard never writes, moves, or deletes anything.

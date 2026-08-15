@@ -641,7 +641,7 @@ function renderFanout(s) {
 document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => {
   document.querySelectorAll('.tab').forEach((x) => x.setAttribute('aria-selected', String(x === t)));
   state.view = t.dataset.view;
-  ['owners', 'ports', 'origins', 'fanout', 'graveyard', 'manifests'].forEach((v) => { $(`#view-${v}`).hidden = v !== state.view; });
+  ['owners', 'ports', 'origins', 'fanout', 'graveyard', 'manifests', 'settings'].forEach((v) => { $(`#view-${v}`).hidden = v !== state.view; });
   if (state.view === 'manifests') loadManifests();
   // The sweep costs seconds, so it runs on first open rather than at startup.
   if (state.view === 'graveyard' && !state.graveyard) loadGraveyard();

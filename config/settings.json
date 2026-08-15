@@ -1,0 +1,21 @@
+{
+  "appearance": {
+    "theme": "system",
+    "density": "comfortable"
+  },
+  "collection": {
+    "fastTtlMs": 4000,
+    "slowTtlMs": 300000,
+    "probePorts": true
+  },
+  "integrations": {
+    "amplitude": {
+      "enabled": false,
+      "serverZone": "US"
+    },
+    "agents": {
+      "enabled": false,
+      "endpoints": []
+    }
+  }
+}

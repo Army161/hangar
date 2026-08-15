@@ -16,7 +16,7 @@
     "dev": "tauri dev",
     "build": "tauri build",
     "build:debug": "tauri build --debug",
-    "test": "node --test test/",
+    "test": "node --test \"test/*.test.js\"",
     "test:rust": "cargo test --workspace",
     "lint:rust": "cargo clippy --workspace --all-targets -- -D warnings",
     "fmt": "cargo fmt --all",
