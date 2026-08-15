@@ -1,9 +1,11 @@
 # HANGAR — Product & Engineering Plan
 
-**Status:** v0.3 shipped locally (guarded writes + persistence control). v1 is the
-cross-platform desktop product with a built-in agent, accounts, and billing.
+**Status:** v0.4.0. Tauri desktop shell shipped (M1–M3) with Windows MSI and NSIS
+installers; macOS and Linux build on CI runners. Node agent still runs as the
+development front end and shares the same UI. v1 remains the cross-platform
+desktop product with a built-in agent, accounts, and billing.
 
-**Owner:** Army · **Repo:** `hangar` · **Last updated:** 2026-08-05
+**Owner:** Army · **Repo:** `hangar` · **Last updated:** 2026-08-15
 
 ---
 
@@ -272,6 +274,15 @@ figures everywhere digits align, both themes always.
 
 **The existing `public/` UI ships into Tauri unchanged.** The port is a shell
 swap, not a redesign.
+
+> **Status note — 2026-08-15.** Done, and mechanically proven. `2b97888` moved
+> `public/` to `apps/desktop/src/` as a rename with a zero-line diff, so the
+> brand lock held by construction rather than by assertion. `public/` no longer
+> exists; read it as `apps/desktop/src/` above.
+>
+> The shared UI is now also documented at `docs/storybook/`, which links the live
+> `apps/desktop/src/style.css` rather than restating it — the same
+> can't-drift-by-construction property, applied to the design system itself.
 
 ---
 
