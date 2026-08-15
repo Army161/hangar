@@ -67,6 +67,18 @@
 }
 
 * { box-sizing: border-box; }
+
+/* The UA sheet hides [hidden] with `display: none`, but any class that sets its
+   own `display` outranks it — author styles beat the user-agent origin. Four
+   elements here do exactly that (.selbar, .persistbar, .modal-wrap, and the
+   confirm modal), so `hidden` did nothing for them: the Park dry-run modal
+   painted its scrim over the whole app from first load, at z-index 80, and
+   swallowed every click. The app was unusable and looked merely "dimmed".
+
+   This restores what `hidden` is supposed to mean, for anything that sets
+   display now or later. It needs !important precisely because the rules it is
+   correcting are more specific than a bare attribute selector. */
+[hidden] { display: none !important; }
 html, body { margin: 0; padding: 0; }
 body {
   background: var(--bg); color: var(--fg);

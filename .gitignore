@@ -27,3 +27,4 @@ package-lock.json
 
 # Secrets — API keys for optional integrations. Never commit.
 config/settings.local.json
+demo/out/
