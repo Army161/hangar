@@ -148,6 +148,40 @@
   <section id="view-settings" hidden>
     <div class="set-grid">
 
+      <div class="set-card set-wide" id="plan-card">
+        <h3>Plan</h3>
+        <div class="plan-now" id="plan-now">
+          <span class="plan-badge" id="plan-badge">Free</span>
+          <span class="plan-blurb" id="plan-blurb">Everything on one machine, offline, no account.</span>
+        </div>
+        <p class="set-help" id="plan-status"></p>
+
+        <div class="plan-toggle" role="group" aria-label="Billing period">
+          <button data-cycle="monthly" aria-pressed="false">Monthly</button>
+          <button data-cycle="annual" aria-pressed="true">Annual <em>2 months free</em></button>
+        </div>
+
+        <div class="plan-grid" id="plan-grid"></div>
+
+        <details class="plan-free">
+          <summary>Free forever, on every tier</summary>
+          <p class="set-help">These are never gated, by design. The local map is why
+            Hangar is worth installing; bring-your-own-key is given away by comparable
+            tools; and the agent's typed execute confirmation is a safety boundary,
+            not a feature — so it cannot be sold.</p>
+          <div class="plan-ungated" id="plan-ungated"></div>
+        </details>
+
+        <label class="set-block" style="margin-top:14px"><span>Licence key</span>
+          <input type="password" id="plan-key" autocomplete="off" placeholder="paste your licence token">
+        </label>
+        <div class="set-row set-add">
+          <button class="icon-btn primary" id="plan-activate">Activate</button>
+          <button class="icon-btn" id="plan-remove">Remove licence</button>
+          <span class="set-stat" id="plan-stat"></span>
+        </div>
+      </div>
+
       <div class="set-card">
         <h3>Appearance</h3>
         <p class="set-help">Theme also follows your OS when set to System.</p>

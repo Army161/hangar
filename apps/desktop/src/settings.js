@@ -190,5 +190,135 @@
     });
   });
 
-  window.__hangarSettings = { load, applyAppearance };
+  // --- plan ------------------------------------------------------------------
+
+  let cycle = 'annual';
+  let plan = null;
+
+  const FEATURE_LABEL = {
+    history: 'History & timeline',
+    graveyard: 'Graveyard Scanner',
+    sync: 'Multi-machine sync',
+    secretAudit: 'Secret audit',
+    scheduledSweeps: 'Scheduled sweeps',
+    prioritySupport: 'Priority support',
+    fleet: 'Fleet view',
+    sharedPolicy: 'Shared protect policies',
+    sso: 'SSO',
+    auditLog: 'Audit log',
+  };
+
+  async function loadPlan() {
+    const res = await fetch('/api/entitlement', { cache: 'no-store' });
+    if (!res.ok) throw new Error(`entitlement ${res.status}`);
+    plan = await res.json();
+    renderPlan();
+  }
+
+  function renderPlan() {
+    if (!plan) return;
+    const cur = plan.tier.id;
+
+    const badge = $('#plan-badge');
+    badge.textContent = plan.tier.name;
+    badge.className = `plan-badge${cur === 'free' ? ' free' : ''}`;
+    $('#plan-blurb').textContent = plan.tier.blurb;
+
+    // Say precisely what happened. A user who paid and sees "Free" needs the reason.
+    const REASON = {
+      'no-licence': '',
+      'no-public-key': 'No licence key is configured in this build, so paid tiers cannot be activated yet.',
+      malformed: 'That licence could not be read. Check it was pasted in full.',
+      'bad-signature': 'That licence failed verification. It may have been edited, or issued by a different key.',
+      'unknown-tier': 'That licence names a tier this version does not know about. Try updating Hangar.',
+      expired: 'Your licence expired more than 14 days ago. Renew to restore paid features.',
+    };
+    let status = '';
+    if (plan.valid && plan.grace) {
+      const days = Math.max(0, Math.ceil((plan.graceEndsMs - Date.now()) / 86400000));
+      status = `Licence expired — running on offline grace for ${days} more day${days === 1 ? '' : 's'}.`;
+    } else if (plan.valid && plan.expMs) {
+      status = `Licensed to ${plan.subject || 'this machine'} · renews ${new Date(plan.expMs).toLocaleDateString()}`;
+    } else {
+      status = REASON[plan.reason] || '';
+    }
+    $('#plan-status').textContent = status;
+
+    $('#plan-grid').innerHTML = plan.catalogue.map((t) => {
+      const price = cycle === 'annual' ? t.priceAnnual : t.priceMonthly;
+      const per = t.priceMonthly === 0 ? ''
+        : cycle === 'annual'
+          ? `$${(t.priceAnnual / 12).toFixed(0)}/mo billed annually${t.perSeat ? ', per seat' : ''}`
+          : `per month${t.perSeat ? ', per seat' : ''}`;
+      const feats = t.features.length
+        ? t.features.map((f) => `<li>${FEATURE_LABEL[f] || f}</li>`).join('')
+        : '<li>The full local map</li><li>Park, restore, persistence</li><li>Local models and BYOK</li>';
+      return `<div class="plan-tier${t.id === cur ? ' is-current' : ''}">
+        <h4>${esc(t.name)}</h4>
+        <div class="plan-price">${price === 0 ? 'Free' : `$${price}`}${price === 0 ? '' : '<small></small>'}</div>
+        <div class="plan-per">${esc(per)}</div>
+        <ul>
+          <li>${t.machines === 'unlimited' ? 'Unlimited machines' : `${t.machines} machine${t.machines === 1 ? '' : 's'}`}</li>
+          ${feats}
+        </ul>
+        ${t.id === cur ? '<div class="cur">Current plan</div>' : ''}
+      </div>`;
+    }).join('');
+
+    $('#plan-ungated').innerHTML = plan.ungateable
+      .map((c) => `<span>${esc(c)}</span>`).join('');
+  }
+
+  async function activate() {
+    const token = $('#plan-key').value.trim();
+    if (!token) return stat('#plan-stat', 'Paste a licence key first.', 'bad');
+    const res = await fetch('/api/licence', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    });
+    const out = await res.json();
+    if (!res.ok) return stat('#plan-stat', out.error || `failed (${res.status})`, 'bad');
+    if (!out.ok) {
+      plan = null;
+      await loadPlan();
+      return stat('#plan-stat', 'Licence rejected — see the note above.', 'bad');
+    }
+    $('#plan-key').value = '';
+    plan = out.entitlement;
+    renderPlan();
+    stat('#plan-stat', `Activated — ${plan.tier.name}.`, 'ok');
+  }
+
+  async function removeLicence() {
+    const res = await fetch('/api/licence', { method: 'DELETE' });
+    const out = await res.json();
+    if (!res.ok) return stat('#plan-stat', out.error || 'failed', 'bad');
+    plan = out.entitlement;
+    renderPlan();
+    stat('#plan-stat', 'Licence removed. Hangar is on the Free tier and still fully working.', 'ok');
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.plan-toggle button').forEach((b) => {
+      b.onclick = () => {
+        cycle = b.dataset.cycle;
+        document.querySelectorAll('.plan-toggle button')
+          .forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+        renderPlan();
+      };
+    });
+    $('#plan-activate').onclick = () => activate().catch((e) => stat('#plan-stat', e.message, 'bad'));
+    $('#plan-remove').onclick = () => removeLicence().catch((e) => stat('#plan-stat', e.message, 'bad'));
+
+    document.querySelectorAll('.tab').forEach((t) => {
+      t.addEventListener('click', () => {
+        if (t.dataset.view === 'settings' && !plan) {
+          loadPlan().catch((e) => stat('#plan-stat', e.message, 'bad'));
+        }
+      });
+    });
+  });
+
+  window.__hangarSettings = { load, applyAppearance, loadPlan };
 })();

@@ -523,6 +523,49 @@ main { padding: 20px 22px 80px; max-width: 1560px; margin: 0 auto; }
   padding: 4px 16px 22px;
 }
 .icon-btn.primary { background: var(--signal); color: #231802; border-color: transparent; font-weight: 600; }
+
+/* --- Plan / pricing --- */
+.plan-now { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; flex-wrap: wrap; }
+.plan-badge {
+  font-family: var(--display); font-size: 13px; letter-spacing: .08em; text-transform: uppercase;
+  background: var(--signal); color: #231802; padding: 3px 11px; border-radius: 3px; font-weight: 600;
+}
+.plan-badge.free { background: var(--chip); color: var(--fg-2); border: 1px solid var(--line); }
+.plan-blurb { font-size: 13px; color: var(--fg-2); }
+
+.plan-toggle { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; margin: 10px 0 14px; }
+.plan-toggle button {
+  background: transparent; border: 0; color: var(--fg-2); font: inherit; font-size: 12.5px;
+  padding: 6px 14px; cursor: pointer;
+}
+.plan-toggle button em { font-style: normal; font-size: 10.5px; opacity: .75; margin-left: 5px; }
+.plan-toggle button[aria-pressed="true"] { background: var(--signal); color: #231802; font-weight: 600; }
+
+.plan-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+.plan-tier {
+  border: 1px solid var(--line); border-radius: 9px; padding: 14px; background: var(--bg);
+  display: flex; flex-direction: column;
+}
+.plan-tier.is-current { border-color: var(--signal); box-shadow: 0 0 0 1px var(--signal) inset; }
+.plan-tier h4 {
+  font-family: var(--display); font-size: 15px; margin: 0 0 2px; letter-spacing: .02em;
+}
+.plan-price { font-family: var(--display); font-size: 25px; font-variant-numeric: tabular-nums; line-height: 1.15; }
+.plan-price small { font-size: 11.5px; color: var(--fg-3); font-family: var(--body); }
+.plan-per { font-size: 11px; color: var(--fg-3); margin-bottom: 9px; min-height: 14px; }
+.plan-tier ul { list-style: none; margin: 0; padding: 0; font-size: 12.5px; color: var(--fg-2); flex: 1; }
+.plan-tier li { padding: 2px 0 2px 15px; position: relative; }
+.plan-tier li::before { content: "·"; position: absolute; left: 4px; color: var(--signal); font-weight: 700; }
+.plan-tier .cur { margin-top: 10px; font-size: 11px; color: var(--signal); text-transform: uppercase; letter-spacing: .07em; }
+
+.plan-free { margin-top: 16px; }
+.plan-free > summary { cursor: pointer; font-size: 12.5px; color: var(--fg-2); padding: 5px 0; }
+.plan-free > summary:hover { color: var(--signal); }
+.plan-ungated { display: flex; flex-wrap: wrap; gap: 5px; }
+.plan-ungated span {
+  font-family: var(--mono); font-size: 10.5px; padding: 2px 7px;
+  border: 1px solid var(--line); border-radius: 3px; color: var(--fg-2);
+}
 .set-stat { font-size: 12.5px; color: var(--fg-2); }
 .set-stat.ok { color: var(--good); }
 .set-stat.bad { color: var(--alert); }

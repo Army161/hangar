@@ -30,6 +30,7 @@ const { writeManifest, listManifests, restoreManifest, markRestored } = require(
 const { entryId, evaluatePersistence, describeAction, invertAction } = require('./lib/persistence');
 const { classifyProject, mergeWithLive, rankGraveyard } = require('./lib/graveyard');
 const settings = require('./lib/settings');
+const entitlements = require('./lib/entitlements');
 
 const PORT = Number(process.env.HANGAR_PORT) || 7420;
 const ROOT = __dirname;
@@ -632,6 +633,37 @@ const server = http.createServer(async (req, res) => {
 
   if (url.pathname === '/api/manifests' && req.method === 'GET') {
     return json(res, 200, { manifests: listManifests() });
+  }
+
+  // --- entitlement ----------------------------------------------------------
+  // Local only. There is no phone-home: a licence is a signed token the user
+  // pastes in, verified against an embedded public key. Every failure path
+  // resolves to the free tier with the app fully working, so this endpoint can
+  // never be the reason Hangar stops being useful.
+  if (url.pathname === '/api/entitlement' && req.method === 'GET') {
+    return json(res, 200, entitlements.describe());
+  }
+
+  if (url.pathname === '/api/licence' && req.method === 'POST') {
+    if (READ_ONLY) return json(res, 403, { error: 'Hangar is running in read-only mode (HANGAR_READONLY=1).' });
+    try {
+      const body = await readBody(req);
+      const out = entitlements.save((body && body.token) || '');
+      // A rejected licence returns 200 with ok:false — this is a validation
+      // outcome the UI must explain, not a transport error.
+      return json(res, 200, out.ok
+        ? { ok: true, entitlement: entitlements.describe() }
+        : { ok: false, reason: out.reason });
+    } catch (e) {
+      noteError('licence', e);
+      return json(res, 400, { error: e.message });
+    }
+  }
+
+  if (url.pathname === '/api/licence' && req.method === 'DELETE') {
+    if (READ_ONLY) return json(res, 403, { error: 'Hangar is running in read-only mode (HANGAR_READONLY=1).' });
+    entitlements.clear();
+    return json(res, 200, { ok: true, entitlement: entitlements.describe() });
   }
 
   // --- settings -------------------------------------------------------------
