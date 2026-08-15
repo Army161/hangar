@@ -88,6 +88,40 @@ function agentHandlers() {
       if (!g) return { error: 'The graveyard sweep has not completed yet. Try again shortly.' };
       return (g.projects || []).slice(0, 40);
     },
+
+    // --- PLAN tier: real dry runs, through the same guard as the UI ---------
+    //
+    // These call buildParkPlan / buildPersistPlan directly rather than
+    // reimplementing them, so the agent and the dashboard cannot disagree about
+    // what the guard permits.
+    //
+    // confirmPhrase is stripped before the result reaches the model. Nothing
+    // today could use it — request_execution takes only a planId, and
+    // /api/execute reads the phrase from the browser, not the agent — but a
+    // phrase sitting in the model's context is a latent exploit the moment
+    // someone adds a tool that forwards one. It costs nothing to withhold.
+
+    plan_park: async ({ pids, includeTree } = {}) => {
+      const out = await buildParkPlan({ pids, includeTree });
+      if (out.status !== 200) return { error: out.body.error };
+      const { confirmPhrase, ...safe } = out.body;
+      return {
+        ...safe,
+        note: 'Dry run only — nothing has stopped. To proceed, the user must open this '
+            + 'plan and type the confirmation phrase. You cannot supply it and do not know it.',
+      };
+    },
+
+    plan_persistence: async ({ ids, mode } = {}) => {
+      const out = await buildPersistPlan({ ids, mode });
+      if (out.status !== 200) return { error: out.body.error };
+      const { confirmPhrase, ...safe } = out.body;
+      return {
+        ...safe,
+        note: 'Dry run only — nothing has changed. The user must type the confirmation '
+            + 'phrase to apply it. You cannot supply it and do not know it.',
+      };
+    },
   };
 }
 
@@ -417,13 +451,21 @@ function json(res, code, obj) {
   res.end(JSON.stringify(obj));
 }
 
-/** POST /api/plan — dry-run. Nothing is killed here, ever. */
-async function handlePlan(body, res) {
+/**
+ * Build a park dry-run. Nothing is killed here, ever.
+ *
+ * Transport-independent so the HTTP endpoint and the agent share one
+ * implementation — a second copy of this would be a second copy of the guard,
+ * and the 2026-07-29 MetaTrader incident is what a divergent guard costs.
+ *
+ * Returns { status, body } rather than writing a response.
+ */
+async function buildParkPlan(body = {}) {
   const pids = (body.pids || []).map(Number).filter(Number.isInteger);
-  if (!pids.length) return json(res, 400, { error: 'pids required' });
+  if (!pids.length) return { status: 400, body: { error: 'pids required' } };
 
   const fast = await getFast();
-  if (!fast) return json(res, 503, { error: 'no process data yet' });
+  if (!fast) return { status: 503, body: { error: 'no process data yet' } };
 
   const procs = fast.processes;
   const verdict = evaluateKill(pids, procs, {
@@ -444,14 +486,23 @@ async function handlePlan(body, res) {
   // Opportunistic cleanup of stale plans.
   for (const [id, p] of plans) if (p.expiresAt < Date.now()) plans.delete(id);
 
-  json(res, 200, {
-    planId,
-    confirmPhrase: phrase,
-    expiresInSec: PLAN_TTL_MS / 1000,
-    estimateMB: totalMB,
-    allowed: verdict.allowed,
-    blocked: verdict.blocked,
-  });
+  return {
+    status: 200,
+    body: {
+      planId,
+      confirmPhrase: phrase,
+      expiresInSec: PLAN_TTL_MS / 1000,
+      estimateMB: totalMB,
+      allowed: verdict.allowed,
+      blocked: verdict.blocked,
+    },
+  };
+}
+
+/** POST /api/plan — dry-run. Nothing is killed here, ever. */
+async function handlePlan(body, res) {
+  const out = await buildParkPlan(body);
+  json(res, out.status, out.body);
 }
 
 /** POST /api/execute — the only code path in Hangar that kills anything. */
@@ -553,13 +604,19 @@ function applyPersistence(actions) {
 }
 
 /** POST /api/persist/plan — dry run over startup entries, tasks and services. */
-async function handlePersistPlan(body, res) {
+/**
+ * Build a persistence dry-run. Changes nothing.
+ *
+ * Transport-independent, for the same reason as buildParkPlan: the agent and
+ * the HTTP endpoint must evaluate against one guard, not two.
+ */
+async function buildPersistPlan(body = {}) {
   const ids = (body.ids || []).map(String).filter(Boolean);
-  if (!ids.length) return json(res, 400, { error: 'ids required' });
+  if (!ids.length) return { status: 400, body: { error: 'ids required' } };
   const mode = body.mode === 'enable' ? 'enable' : 'disable';
 
   const slow = await getSlow();
-  if (!slow) return json(res, 503, { error: 'persistence data not collected yet' });
+  if (!slow) return { status: 503, body: { error: 'persistence data not collected yet' } };
 
   const entries = slow.entries || [];
   const verdict = mode === 'disable'
@@ -583,14 +640,23 @@ async function handlePersistPlan(body, res) {
   });
   for (const [id, p] of persistPlans) if (p.expiresAt < Date.now()) persistPlans.delete(id);
 
-  json(res, 200, {
-    planId, mode, confirmPhrase: phrase, expiresInSec: PLAN_TTL_MS / 1000,
-    allowed: verdict.allowed, blocked: verdict.blocked,
-    adminRequired: needsAdmin.length,
-    adminNote: needsAdmin.length
-      ? `${needsAdmin.length} of these need an elevated agent (HKLM keys and services). They will be reported as skipped, not silently failed.`
-      : null,
-  });
+  return {
+    status: 200,
+    body: {
+      planId, mode, confirmPhrase: phrase, expiresInSec: PLAN_TTL_MS / 1000,
+      allowed: verdict.allowed, blocked: verdict.blocked,
+      adminRequired: needsAdmin.length,
+      adminNote: needsAdmin.length
+        ? `${needsAdmin.length} of these need an elevated agent (HKLM keys and services). They will be reported as skipped, not silently failed.`
+        : null,
+    },
+  };
+}
+
+/** POST /api/persist/plan — dry-run over startup entries. Changes nothing. */
+async function handlePersistPlan(body, res) {
+  const out = await buildPersistPlan(body);
+  json(res, out.status, out.body);
 }
 
 /** POST /api/persist/execute — applies a confirmed plan and manifests it. */
