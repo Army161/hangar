@@ -773,10 +773,19 @@ const server = http.createServer(async (req, res) => {
       // discrete GPU, and recommendLocal reports "unknown" rather than guessing.
       const fast = await getFast().catch(() => null);
       const freeVramGb = fast && fast.vram ? fast.vram.freeMB / 1024 : null;
+
+      // Fit and default are computed here, not in the browser, so the picker
+      // cannot drift from the rule the tests cover. `fits` is tri-state: true,
+      // false, or null when the question does not apply (cloud model, or no
+      // VRAM reading) — the UI must not render null as "will not fit".
+      const withFit = found.models.map((m) => ({ ...m, fits: agentModels.fitsVram(m, freeVramGb) }));
+      const chosen = agentModels.pickDefault(withFit, freeVramGb);
+
       return json(res, 200, {
         providers: agentModels.PROVIDERS,
         curated: agentModels.CURATED,
-        discovered: found.models,
+        discovered: withFit,
+        defaultModel: chosen ? { provider: chosen.provider, id: chosen.id } : null,
         reachable: found.providers,
         vram: agentModels.recommendLocal(freeVramGb),
         configured: Object.keys(keys),

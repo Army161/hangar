@@ -95,14 +95,39 @@
       const opts = g.items.map((m) => {
         const needsKey = data.providers[m.provider]?.needsKey && !data.configured.includes(m.provider);
         const size = m.sizeGb ? ` (${m.sizeGb} GB)` : '';
+        // fits === false is the only "won't run" signal. null means the question
+        // doesn't apply — a cloud model, or no VRAM reading — and must not be
+        // rendered as a warning.
+        const wontFit = m.fits === false;
+        const label = needsKey ? ' — needs API key'
+          : wontFit ? ` — needs more than ${data.vram.freeGb} GB free` : '';
+        // Not disabled: VRAM is dynamic, and the user may close something to
+        // free it. Say it plainly and let them choose.
         return `<option value="${esc(m.provider)}|${esc(m.id)}"${needsKey ? ' disabled' : ''}>`
-             + `${esc(m.label || m.id)}${size}${needsKey ? ' — needs API key' : ''}</option>`;
+             + `${wontFit ? '⚠ ' : ''}${esc(m.label || m.id)}${size}${label}</option>`;
       }).join('');
       return `<optgroup label="${esc(g.label)}${tag}">${opts}</optgroup>`;
     }).join('');
 
+    const usable = (v) => {
+      const o = [...sel.options].find((x) => x.value === v);
+      if (!o || o.disabled) return false;
+      const [provider, id] = v.split('|');
+      const model = data.discovered.find((x) => x.provider === provider && x.id === id);
+      return !model || model.fits !== false;
+    };
+
+    // A saved choice is only restored if it still fits — VRAM changes between
+    // sessions, so yesterday's pick can be today's OOM.
     const saved = localStorage.getItem(LS_MODEL);
-    if (saved && [...sel.options].some((o) => o.value === saved && !o.disabled)) sel.value = saved;
+    const fallback = data.defaultModel ? `${data.defaultModel.provider}|${data.defaultModel.id}` : '';
+    if (saved && usable(saved)) sel.value = saved;
+    else if (fallback && [...sel.options].some((o) => o.value === fallback)) sel.value = fallback;
+    else {
+      const first = [...sel.options].find((o) => !o.disabled && usable(o.value));
+      if (first) sel.value = first.value;
+    }
+
     sel.onchange = () => { try { localStorage.setItem(LS_MODEL, sel.value); } catch {} };
 
     // Say the VRAM constraint before a model is picked, not after it OOMs.
