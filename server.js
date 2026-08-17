@@ -30,6 +30,100 @@ const { writeManifest, listManifests, restoreManifest, markRestored } = require(
 const { entryId, evaluatePersistence, describeAction, invertAction } = require('./lib/persistence');
 const { classifyProject, mergeWithLive, rankGraveyard } = require('./lib/graveyard');
 const settings = require('./lib/settings');
+const entitlements = require('./lib/entitlements');
+const agent = require('./lib/agent');
+const agentModels = require('./lib/agent/models');
+
+/**
+ * What the agent may actually call.
+ *
+ * Read-only by construction: every entry below reads the snapshot the dashboard
+ * already builds. Nothing here mutates, and the agent has no other route to the
+ * machine — the loop calls only what this map exposes.
+ */
+function agentHandlers() {
+  return {
+    list_owners: async ({ kind, sort, limit } = {}) => {
+      const snap = await buildSnapshot();
+      let owners = snap.owners || [];
+      if (kind) owners = owners.filter((o) => o.kind === kind);
+      const key = { mem: 'memMB', cpu: 'cpuPct', procs: 'procs' }[sort] || 'memMB';
+      owners = [...owners].sort((a, b) => (b[key] || 0) - (a[key] || 0));
+      return owners.slice(0, Math.min(Number(limit) || 25, 100)).map((o) => ({
+        owner: o.owner, kind: o.kind, memMB: o.memMB, cpuPct: o.cpuPct,
+        procs: o.procs, pids: (o.pids || []).slice(0, 8), protectedOwner: Boolean(o.protected),
+      }));
+    },
+
+    get_owner: async ({ key } = {}) => {
+      const snap = await buildSnapshot();
+      const o = (snap.owners || []).find((x) => x.key === key || x.owner === key);
+      return o || { error: `No owner matching "${key}".` };
+    },
+
+    trace_origin: async ({ pid } = {}) => {
+      const snap = await buildSnapshot();
+      const o = (snap.owners || []).find((x) => (x.pids || []).includes(Number(pid)));
+      return o ? { owner: o.owner, origin: o.origin || null } : { error: `pid ${pid} not found.` };
+    },
+
+    list_ports: async ({ liveOnly } = {}) => {
+      const snap = await buildSnapshot();
+      const ports = snap.ports || [];
+      return (liveOnly ? ports.filter((p) => p.live) : ports)
+        .map((p) => ({ port: p.port, owner: p.owner, kind: p.kind, title: p.title || null, live: Boolean(p.live) }));
+    },
+
+    list_persistence: async ({ kind } = {}) => {
+      const slow = await getSlow();
+      const entries = (slow && slow.entries) || [];
+      return (kind ? entries.filter((e) => e.kind === kind) : entries)
+        .map((e) => ({ id: e.id, name: e.name, kind: e.kind, added: e.added, addedSource: e.addedSource, cmd: e.cmd }));
+    },
+
+    list_manifests: async () => listManifests(),
+
+    scan_graveyard: async ({ refresh } = {}) => {
+      const g = await getGraveyard(Boolean(refresh));
+      if (!g) return { error: 'The graveyard sweep has not completed yet. Try again shortly.' };
+      return (g.projects || []).slice(0, 40);
+    },
+
+    // --- PLAN tier: real dry runs, through the same guard as the UI ---------
+    //
+    // These call buildParkPlan / buildPersistPlan directly rather than
+    // reimplementing them, so the agent and the dashboard cannot disagree about
+    // what the guard permits.
+    //
+    // confirmPhrase is stripped before the result reaches the model. Nothing
+    // today could use it — request_execution takes only a planId, and
+    // /api/execute reads the phrase from the browser, not the agent — but a
+    // phrase sitting in the model's context is a latent exploit the moment
+    // someone adds a tool that forwards one. It costs nothing to withhold.
+
+    plan_park: async ({ pids, includeTree } = {}) => {
+      const out = await buildParkPlan({ pids, includeTree });
+      if (out.status !== 200) return { error: out.body.error };
+      const { confirmPhrase, ...safe } = out.body;
+      return {
+        ...safe,
+        note: 'Dry run only — nothing has stopped. To proceed, the user must open this '
+            + 'plan and type the confirmation phrase. You cannot supply it and do not know it.',
+      };
+    },
+
+    plan_persistence: async ({ ids, mode } = {}) => {
+      const out = await buildPersistPlan({ ids, mode });
+      if (out.status !== 200) return { error: out.body.error };
+      const { confirmPhrase, ...safe } = out.body;
+      return {
+        ...safe,
+        note: 'Dry run only — nothing has changed. The user must type the confirmation '
+            + 'phrase to apply it. You cannot supply it and do not know it.',
+      };
+    },
+  };
+}
 
 const PORT = Number(process.env.HANGAR_PORT) || 7420;
 const ROOT = __dirname;
@@ -357,13 +451,21 @@ function json(res, code, obj) {
   res.end(JSON.stringify(obj));
 }
 
-/** POST /api/plan — dry-run. Nothing is killed here, ever. */
-async function handlePlan(body, res) {
+/**
+ * Build a park dry-run. Nothing is killed here, ever.
+ *
+ * Transport-independent so the HTTP endpoint and the agent share one
+ * implementation — a second copy of this would be a second copy of the guard,
+ * and the 2026-07-29 MetaTrader incident is what a divergent guard costs.
+ *
+ * Returns { status, body } rather than writing a response.
+ */
+async function buildParkPlan(body = {}) {
   const pids = (body.pids || []).map(Number).filter(Number.isInteger);
-  if (!pids.length) return json(res, 400, { error: 'pids required' });
+  if (!pids.length) return { status: 400, body: { error: 'pids required' } };
 
   const fast = await getFast();
-  if (!fast) return json(res, 503, { error: 'no process data yet' });
+  if (!fast) return { status: 503, body: { error: 'no process data yet' } };
 
   const procs = fast.processes;
   const verdict = evaluateKill(pids, procs, {
@@ -384,14 +486,23 @@ async function handlePlan(body, res) {
   // Opportunistic cleanup of stale plans.
   for (const [id, p] of plans) if (p.expiresAt < Date.now()) plans.delete(id);
 
-  json(res, 200, {
-    planId,
-    confirmPhrase: phrase,
-    expiresInSec: PLAN_TTL_MS / 1000,
-    estimateMB: totalMB,
-    allowed: verdict.allowed,
-    blocked: verdict.blocked,
-  });
+  return {
+    status: 200,
+    body: {
+      planId,
+      confirmPhrase: phrase,
+      expiresInSec: PLAN_TTL_MS / 1000,
+      estimateMB: totalMB,
+      allowed: verdict.allowed,
+      blocked: verdict.blocked,
+    },
+  };
+}
+
+/** POST /api/plan — dry-run. Nothing is killed here, ever. */
+async function handlePlan(body, res) {
+  const out = await buildParkPlan(body);
+  json(res, out.status, out.body);
 }
 
 /** POST /api/execute — the only code path in Hangar that kills anything. */
@@ -493,13 +604,19 @@ function applyPersistence(actions) {
 }
 
 /** POST /api/persist/plan — dry run over startup entries, tasks and services. */
-async function handlePersistPlan(body, res) {
+/**
+ * Build a persistence dry-run. Changes nothing.
+ *
+ * Transport-independent, for the same reason as buildParkPlan: the agent and
+ * the HTTP endpoint must evaluate against one guard, not two.
+ */
+async function buildPersistPlan(body = {}) {
   const ids = (body.ids || []).map(String).filter(Boolean);
-  if (!ids.length) return json(res, 400, { error: 'ids required' });
+  if (!ids.length) return { status: 400, body: { error: 'ids required' } };
   const mode = body.mode === 'enable' ? 'enable' : 'disable';
 
   const slow = await getSlow();
-  if (!slow) return json(res, 503, { error: 'persistence data not collected yet' });
+  if (!slow) return { status: 503, body: { error: 'persistence data not collected yet' } };
 
   const entries = slow.entries || [];
   const verdict = mode === 'disable'
@@ -523,14 +640,23 @@ async function handlePersistPlan(body, res) {
   });
   for (const [id, p] of persistPlans) if (p.expiresAt < Date.now()) persistPlans.delete(id);
 
-  json(res, 200, {
-    planId, mode, confirmPhrase: phrase, expiresInSec: PLAN_TTL_MS / 1000,
-    allowed: verdict.allowed, blocked: verdict.blocked,
-    adminRequired: needsAdmin.length,
-    adminNote: needsAdmin.length
-      ? `${needsAdmin.length} of these need an elevated agent (HKLM keys and services). They will be reported as skipped, not silently failed.`
-      : null,
-  });
+  return {
+    status: 200,
+    body: {
+      planId, mode, confirmPhrase: phrase, expiresInSec: PLAN_TTL_MS / 1000,
+      allowed: verdict.allowed, blocked: verdict.blocked,
+      adminRequired: needsAdmin.length,
+      adminNote: needsAdmin.length
+        ? `${needsAdmin.length} of these need an elevated agent (HKLM keys and services). They will be reported as skipped, not silently failed.`
+        : null,
+    },
+  };
+}
+
+/** POST /api/persist/plan — dry-run over startup entries. Changes nothing. */
+async function handlePersistPlan(body, res) {
+  const out = await buildPersistPlan(body);
+  json(res, out.status, out.body);
 }
 
 /** POST /api/persist/execute — applies a confirmed plan and manifests it. */
@@ -632,6 +758,99 @@ const server = http.createServer(async (req, res) => {
 
   if (url.pathname === '/api/manifests' && req.method === 'GET') {
     return json(res, 200, { manifests: listManifests() });
+  }
+
+  // --- agent ----------------------------------------------------------------
+  // Model discovery is live: Ollama and OpenAI-compatible providers are asked
+  // what they actually have, rather than a hardcoded list going stale.
+  if (url.pathname === '/api/agent/models' && req.method === 'GET') {
+    try {
+      const s = settings.load();
+      const keys = settings.agentKeys ? settings.agentKeys() : {};
+      const found = await agentModels.discoverAll(keys);
+      // VRAM comes from the fast collector (scripts/collect-fast.ps1 → vram.freeMB),
+      // the same source the header gauge reads. It is null on machines without a
+      // discrete GPU, and recommendLocal reports "unknown" rather than guessing.
+      const fast = await getFast().catch(() => null);
+      const freeVramGb = fast && fast.vram ? fast.vram.freeMB / 1024 : null;
+
+      // Fit and default are computed here, not in the browser, so the picker
+      // cannot drift from the rule the tests cover. `fits` is tri-state: true,
+      // false, or null when the question does not apply (cloud model, or no
+      // VRAM reading) — the UI must not render null as "will not fit".
+      const withFit = found.models.map((m) => ({ ...m, fits: agentModels.fitsVram(m, freeVramGb) }));
+      const chosen = agentModels.pickDefault(withFit, freeVramGb);
+
+      return json(res, 200, {
+        providers: agentModels.PROVIDERS,
+        curated: agentModels.CURATED,
+        discovered: withFit,
+        defaultModel: chosen ? { provider: chosen.provider, id: chosen.id } : null,
+        reachable: found.providers,
+        vram: agentModels.recommendLocal(freeVramGb),
+        configured: Object.keys(keys),
+        enabled: s.integrations.agents.enabled,
+      });
+    } catch (e) {
+      noteError('agent models', e);
+      return json(res, 500, { error: e.message });
+    }
+  }
+
+  if (url.pathname === '/api/agent/chat' && req.method === 'POST') {
+    try {
+      const body = await readBody(req);
+      const model = (body && body.model) || {};
+      if (!model.provider || !model.id) return json(res, 400, { error: 'model.provider and model.id are required' });
+
+      // The key is looked up server-side by provider name. The client never
+      // sends it, so a key cannot leak through a chat request or its logs.
+      const keys = settings.agentKeys ? settings.agentKeys() : {};
+      const events = [];
+
+      const out = await agent.run({
+        model: { ...model, apiKey: keys[model.provider] },
+        messages: Array.isArray(body.messages) ? body.messages : [],
+        handlers: agentHandlers(),
+        onEvent: (e) => events.push(e),
+      });
+
+      return json(res, 200, { ...out, events });
+    } catch (e) {
+      noteError('agent chat', e);
+      return json(res, 500, { error: e.message });
+    }
+  }
+
+  // --- entitlement ----------------------------------------------------------
+  // Local only. There is no phone-home: a licence is a signed token the user
+  // pastes in, verified against an embedded public key. Every failure path
+  // resolves to the free tier with the app fully working, so this endpoint can
+  // never be the reason Hangar stops being useful.
+  if (url.pathname === '/api/entitlement' && req.method === 'GET') {
+    return json(res, 200, entitlements.describe());
+  }
+
+  if (url.pathname === '/api/licence' && req.method === 'POST') {
+    if (READ_ONLY) return json(res, 403, { error: 'Hangar is running in read-only mode (HANGAR_READONLY=1).' });
+    try {
+      const body = await readBody(req);
+      const out = entitlements.save((body && body.token) || '');
+      // A rejected licence returns 200 with ok:false — this is a validation
+      // outcome the UI must explain, not a transport error.
+      return json(res, 200, out.ok
+        ? { ok: true, entitlement: entitlements.describe() }
+        : { ok: false, reason: out.reason });
+    } catch (e) {
+      noteError('licence', e);
+      return json(res, 400, { error: e.message });
+    }
+  }
+
+  if (url.pathname === '/api/licence' && req.method === 'DELETE') {
+    if (READ_ONLY) return json(res, 403, { error: 'Hangar is running in read-only mode (HANGAR_READONLY=1).' });
+    entitlements.clear();
+    return json(res, 200, { ok: true, entitlement: entitlements.describe() });
   }
 
   // --- settings -------------------------------------------------------------
