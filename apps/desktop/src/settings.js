@@ -253,6 +253,15 @@
       const feats = t.features.length
         ? t.features.map((f) => `<li>${FEATURE_LABEL[f] || f}</li>`).join('')
         : '<li>The full local map</li><li>Park, restore, persistence</li><li>Local models and BYOK</li>';
+      // A buy button only appears for a paid tier the user is not already on,
+      // and only when billing is actually configured — a button that opens a
+      // 503 is worse than no button.
+      const buyable = t.priceMonthly > 0 && t.id !== cur && plan.billingReady;
+      const buy = buyable
+        ? `<button class="icon-btn primary plan-buy" data-tier="${esc(t.id)}">Upgrade</button>`
+        : (t.priceMonthly > 0 && t.id !== cur && plan.billingConfigured === false
+          ? '<div class="plan-soon">Not yet on sale</div>' : '');
+
       return `<div class="plan-tier${t.id === cur ? ' is-current' : ''}">
         <h4>${esc(t.name)}</h4>
         <div class="plan-price">${price === 0 ? 'Free' : `$${price}`}${price === 0 ? '' : '<small></small>'}</div>
@@ -261,12 +270,34 @@
           <li>${t.machines === 'unlimited' ? 'Unlimited machines' : `${t.machines} machine${t.machines === 1 ? '' : 's'}`}</li>
           ${feats}
         </ul>
-        ${t.id === cur ? '<div class="cur">Current plan</div>' : ''}
+        ${t.id === cur ? '<div class="cur">Current plan</div>' : buy}
       </div>`;
     }).join('');
 
     $('#plan-ungated').innerHTML = plan.ungateable
       .map((c) => `<span>${esc(c)}</span>`).join('');
+
+    // Checkout opens in the browser, not in-app. Card entry belongs on
+    // Stripe's own page — Hangar never sees a card number, and a payment form
+    // inside a desktop app is exactly what users are told to distrust.
+    document.querySelectorAll('.plan-buy').forEach((b) => {
+      b.onclick = () => startCheckout(b.dataset.tier).catch((e) => stat('#plan-stat', e.message, 'bad'));
+    });
+  }
+
+  async function startCheckout(tier) {
+    stat('#plan-stat', 'Opening Stripe…');
+    const res = await fetch('/api/billing/checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tier, cycle }),
+    });
+    const out = await res.json();
+    if (!res.ok || !out.url) {
+      return stat('#plan-stat', out.error || 'Could not start checkout.', 'bad');
+    }
+    window.open(out.url, '_blank', 'noopener');
+    stat('#plan-stat', 'Complete the purchase in your browser, then paste the licence key below.', 'ok');
   }
 
   async function activate() {

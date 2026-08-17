@@ -140,6 +140,11 @@ const VERSION = '0.4.0';
 // be long enough to be worth having. Failing closed here is deliberate: the
 // mistake this prevents — exposing park/execute to the LAN unauthenticated —
 // is not one you get to notice and undo later.
+// Where the billing service lives. Unset on a build that is not selling yet,
+// which is the correct default — the Plan card then shows "Not yet on sale"
+// rather than an Upgrade button that 503s.
+const BILLING_URL = (process.env.HANGAR_BILLING_URL || '').replace(/\/+$/, '');
+
 const HOST = process.env.HANGAR_HOST || '127.0.0.1';
 const TOKEN = process.env.HANGAR_TOKEN || '';
 const REMOTE = HOST !== '127.0.0.1' && HOST !== 'localhost';
@@ -449,6 +454,37 @@ function readBody(req, limit = 64 * 1024) {
 function json(res, code, obj) {
   res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
   res.end(JSON.stringify(obj));
+}
+
+/** POST JSON to the billing service. Small, because it has exactly one caller. */
+function postUpstream(target, body) {
+  return new Promise((resolve) => {
+    const u = new URL(target);
+    const mod = u.protocol === 'https:' ? require('https') : require('http');
+    const payload = Buffer.from(JSON.stringify(body || {}));
+    const req2 = mod.request({
+      method: 'POST',
+      hostname: u.hostname,
+      port: u.port || (u.protocol === 'https:' ? 443 : 80),
+      path: u.pathname,
+      timeout: 20000,
+      headers: { 'Content-Type': 'application/json', 'Content-Length': payload.length },
+    }, (r) => {
+      let raw = '';
+      r.on('data', (c) => { raw += c; });
+      r.on('end', () => {
+        let data = null;
+        try { data = JSON.parse(raw); } catch { /* keep raw */ }
+        if (r.statusCode < 200 || r.statusCode >= 300) {
+          return resolve({ ok: false, error: (data && data.error) || `billing service returned ${r.statusCode}` });
+        }
+        resolve({ ok: true, data });
+      });
+    });
+    req2.on('timeout', () => { req2.destroy(); resolve({ ok: false, error: 'billing service timed out' }); });
+    req2.on('error', (e) => resolve({ ok: false, error: `billing service unreachable: ${e.message}` }));
+    req2.end(payload);
+  });
 }
 
 /**
@@ -828,7 +864,33 @@ const server = http.createServer(async (req, res) => {
   // resolves to the free tier with the app fully working, so this endpoint can
   // never be the reason Hangar stops being useful.
   if (url.pathname === '/api/entitlement' && req.method === 'GET') {
-    return json(res, 200, entitlements.describe());
+    return json(res, 200, {
+      ...entitlements.describe(),
+      // Whether a purchase can even be started. The app never holds a Stripe
+      // secret key — it points at the billing service, which does.
+      billingConfigured: Boolean(BILLING_URL),
+      billingReady: Boolean(BILLING_URL),
+    });
+  }
+
+  // Proxy a checkout request to the billing service. The local app cannot talk
+  // to Stripe directly: that needs a secret key, and a secret key on every
+  // customer's machine is a secret key that has leaked.
+  if (url.pathname === '/api/billing/checkout' && req.method === 'POST') {
+    if (!BILLING_URL) {
+      return json(res, 503, { error: 'Billing is not configured on this build. Set HANGAR_BILLING_URL.' });
+    }
+    try {
+      const body = await readBody(req);
+      const out = await postUpstream(`${BILLING_URL}/checkout`, {
+        tier: body && body.tier,
+        cycle: body && body.cycle,
+      });
+      return json(res, out.ok ? 200 : 502, out.ok ? out.data : { error: out.error });
+    } catch (e) {
+      noteError('checkout', e);
+      return json(res, 500, { error: e.message });
+    }
   }
 
   if (url.pathname === '/api/licence' && req.method === 'POST') {
