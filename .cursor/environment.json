@@ -1,0 +1,17 @@
+{
+  "name": "Hangar",
+  "install": "bash .cursor/install.sh",
+  "terminals": [
+    {
+      "name": "hangar-web",
+      "command": "node server.js",
+      "description": "Hangar web agent on http://127.0.0.1:7420 — the dashboard plus the guarded plan/execute/restore API. Live process collection needs Windows PowerShell, so on Linux the table is empty; the cross-platform core collector is target/debug/hangar-collect."
+    }
+  ],
+  "ports": [
+    {
+      "name": "hangar web",
+      "port": 7420
+    }
+  ]
+}
