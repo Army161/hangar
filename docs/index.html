@@ -1,210 +1,549 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Hangar — why is this running?</title>
-<meta name="description" content="Local process, port and origin map with a reversible off switch. Answers what Task Manager cannot: why is this running, and what happens if I turn it off?">
-<link rel="icon" href="assets/icon.png">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hangar — Know what's running. Control what starts.</title>
+<meta name="description" content="Hangar maps local processes, ports, and startup origins with a reversible kill switch. Task Manager tells you node.exe x76. Hangar tells you which 76.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Narrow:ital,wght@0,400..700;1,400..700&display=swap" rel="stylesheet">
 <style>
-/* Tokens lifted verbatim from apps/desktop/src/style.css — one design system. */
+/* ===== RESET & TOKENS ===== */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --petrol:#0E2B31; --petrol-2:#12363D; --petrol-3:#17424A;
-  --concrete:#E4E5E0; --paper:#F7F7F5; --ink:#101A1C; --signal:#E5A50A;
-  --bg:var(--concrete); --surface:var(--paper); --surface-2:#EDEEEA;
-  --fg:var(--ink); --fg-2:#5C6B6E; --fg-3:#8A9698;
-  --line:rgba(16,26,28,.14); --line-2:rgba(16,26,28,.07); --chip:rgba(16,26,28,.05);
-  --good:#2E7D5B; --warn:#B8830B; --alert:#C4362B;
-  --display:"Bahnschrift","DIN Alternate","Archivo Narrow","Liberation Sans Narrow",system-ui,sans-serif;
-  --body:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,sans-serif;
-  --mono:"Cascadia Mono","Cascadia Code",Consolas,ui-monospace,monospace;
+  --petrol:#0E2B31;--petrol-2:#12363D;--petrol-3:#17424A;
+  --concrete:#E4E5E0;--paper:#F7F7F5;--ink:#101A1C;
+  --signal:#E5A50A;--good:#2E7D5B;--alert:#C4362B;--warn:#B8830B;
+  --font-display:'Bahnschrift','Archivo Narrow','DIN Alternate',system-ui,sans-serif;
+  --font-body:'Segoe UI Variable Text','Segoe UI','Archivo Narrow',system-ui,sans-serif;
+  --font-mono:'Cascadia Mono','Cascadia Code',ui-monospace,monospace;
+  --bg:var(--petrol);--surface:var(--petrol-2);--raised:var(--petrol-3);
+  --text:#ffffffec;--text-muted:#ffffff99;--text-dim:#ffffff55;
+  --border:#ffffff15;--glow:rgba(229,165,10,0.12);
+  --radius:10px;--radius-lg:16px;
+  --max-w:1180px;
+  --transition:0.25s cubic-bezier(.4,0,.2,1);
 }
-@media (prefers-color-scheme:dark){
-  :root:not([data-theme="light"]){
-    --bg:var(--petrol); --surface:var(--petrol-2); --surface-2:var(--petrol-3);
-    --fg:#E8EDEC; --fg-2:#8CA3A6; --fg-3:#62797D;
-    --line:rgba(232,237,236,.16); --line-2:rgba(232,237,236,.08); --chip:rgba(232,237,236,.07);
-    --good:#5CBF93; --warn:#E5A50A; --alert:#E5695C;
+@media(prefers-color-scheme:light){
+  :root.auto-theme{
+    --bg:var(--paper);--surface:var(--concrete);--raised:#fff;
+    --text:var(--ink);--text-muted:#101a1cbb;--text-dim:#101a1c77;
+    --border:#101a1c15;--glow:rgba(229,165,10,0.08);
   }
 }
-:root[data-theme="dark"]{
-  --bg:var(--petrol); --surface:var(--petrol-2); --surface-2:var(--petrol-3);
-  --fg:#E8EDEC; --fg-2:#8CA3A6; --fg-3:#62797D;
-  --line:rgba(232,237,236,.16); --line-2:rgba(232,237,236,.08); --chip:rgba(232,237,236,.07);
-  --good:#5CBF93; --warn:#E5A50A; --alert:#E5695C;
+html{scroll-behavior:smooth;font-size:16px}
+body{font-family:var(--font-body);background:var(--bg);color:var(--text);line-height:1.6;overflow-x:hidden;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+img{max-width:100%;display:block}
+.container{width:100%;max-width:var(--max-w);margin:0 auto;padding:0 24px}
+
+/* ===== NAV ===== */
+.nav{position:fixed;top:0;left:0;right:0;z-index:100;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);background:rgba(14,43,49,0.85);border-bottom:1px solid var(--border);transition:background var(--transition)}
+.nav-inner{display:flex;align-items:center;justify-content:space-between;height:60px;max-width:var(--max-w);margin:0 auto;padding:0 24px}
+.nav-brand{display:flex;align-items:center;gap:10px;font-family:var(--font-display);font-weight:700;font-size:1.25rem;letter-spacing:-0.02em}
+.nav-brand svg{width:28px;height:28px}
+.nav-links{display:flex;align-items:center;gap:28px;font-size:0.9rem}
+.nav-links a{color:var(--text-muted);transition:color var(--transition)}
+.nav-links a:hover{color:var(--signal)}
+.nav-cta{background:transparent;border:1.5px solid var(--signal);color:var(--signal);padding:7px 18px;border-radius:6px;font-family:var(--font-body);font-size:0.85rem;font-weight:600;cursor:pointer;transition:all var(--transition)}
+.nav-cta:hover{background:var(--signal);color:var(--petrol)}
+.mobile-toggle{display:none;background:none;border:none;color:var(--text);cursor:pointer;padding:4px}
+@media(max-width:768px){
+  .nav-links{position:fixed;top:60px;left:0;right:0;flex-direction:column;background:var(--petrol-2);padding:24px;gap:20px;transform:translateY(-120%);opacity:0;transition:all 0.3s ease;border-bottom:1px solid var(--border)}
+  .nav-links.open{transform:translateY(0);opacity:1}
+  .mobile-toggle{display:block}
 }
-*{box-sizing:border-box}
-html,body{margin:0;padding:0}
-body{background:var(--bg);color:var(--fg);font-family:var(--body);line-height:1.6;
-     -webkit-font-smoothing:antialiased}
-a{color:inherit}
-.wrap{max-width:1080px;margin:0 auto;padding:0 24px}
 
-/* ---- top bar ---- */
-.bar{position:sticky;top:0;z-index:20;background:var(--petrol);color:#E8EDEC;
-     border-bottom:1px solid rgba(232,237,236,.12)}
-.bar .wrap{display:flex;align-items:center;gap:20px;height:60px}
-.brand{font-family:var(--display);font-size:26px;letter-spacing:.02em;font-weight:600}
-.brand span{color:var(--signal)}
-.bar nav{margin-left:auto;display:flex;gap:22px;font-size:14px}
-.bar nav a{opacity:.8;text-decoration:none}
-.bar nav a:hover{opacity:1;color:var(--signal)}
-.tbtn{background:transparent;border:1px solid rgba(232,237,236,.22);color:inherit;
-      border-radius:6px;padding:5px 11px;font:inherit;font-size:13px;cursor:pointer}
-.tbtn:hover{border-color:var(--signal);color:var(--signal)}
-
-/* ---- hero ---- */
-.hero{background:linear-gradient(170deg,var(--petrol) 0%,var(--petrol-3) 100%);
-      color:#E8EDEC;padding:76px 0 68px;position:relative;overflow:hidden}
-.hero::after{content:"";position:absolute;inset:0;pointer-events:none;
-  background-image:linear-gradient(rgba(232,237,236,.045) 1px,transparent 1px),
-                   linear-gradient(90deg,rgba(232,237,236,.045) 1px,transparent 1px);
-  background-size:52px 52px;mask-image:radial-gradient(ellipse at 70% 0%,#000,transparent 72%)}
-.hero h1{font-family:var(--display);font-size:clamp(40px,7vw,68px);line-height:1.04;
-         margin:0 0 18px;letter-spacing:-.01em;max-width:16ch}
+/* ===== HERO ===== */
+.hero{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:100px 24px 80px;background:var(--petrol);position:relative;overflow:hidden}
+.hero::before{content:'';position:absolute;top:-40%;right:-20%;width:80%;height:80%;background:radial-gradient(ellipse,rgba(229,165,10,0.04) 0%,transparent 70%);pointer-events:none}
+.hero-content{max-width:800px;text-align:center;position:relative;z-index:1}
+.hero-badge{display:inline-flex;align-items:center;gap:6px;background:var(--petrol-2);border:1px solid var(--border);border-radius:100px;padding:6px 16px;font-size:0.8rem;color:var(--signal);font-family:var(--font-mono);margin-bottom:28px}
+.hero-badge span{width:6px;height:6px;background:var(--signal);border-radius:50%}
+.hero h1{font-family:var(--font-display);font-size:clamp(2.2rem,5.5vw,3.8rem);font-weight:700;line-height:1.1;letter-spacing:-0.03em;color:#fff;margin-bottom:20px}
 .hero h1 em{font-style:normal;color:var(--signal)}
-.hero p{font-size:19px;opacity:.86;max-width:60ch;margin:0 0 30px}
-.cta{display:flex;gap:12px;flex-wrap:wrap;position:relative;z-index:2}
-.btn{display:inline-block;padding:12px 22px;border-radius:8px;text-decoration:none;
-     font-weight:600;font-size:15px;border:1px solid transparent;transition:transform .12s}
-.btn:hover{transform:translateY(-1px)}
-.btn-p{background:var(--signal);color:#231802}
-.btn-s{border-color:rgba(232,237,236,.3);color:#E8EDEC}
+.hero-sub{font-size:clamp(0.95rem,2vw,1.15rem);color:var(--text-muted);max-width:640px;margin:0 auto 40px;line-height:1.7;font-family:var(--font-mono);font-size:0.92rem}
+.hero-sub strong{color:var(--text);font-weight:600}
+.hero-actions{display:flex;gap:14px;justify-content:center;flex-wrap:wrap}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:13px 28px;border-radius:8px;font-family:var(--font-body);font-size:0.95rem;font-weight:600;cursor:pointer;transition:all var(--transition);border:2px solid transparent;text-decoration:none}
+.btn-primary{background:var(--signal);color:var(--petrol);border-color:var(--signal)}
+.btn-primary:hover{background:#d4960a;border-color:#d4960a;transform:translateY(-1px);box-shadow:0 8px 24px rgba(229,165,10,0.25)}
+.btn-ghost{border-color:var(--text-dim);color:var(--text-muted)}
+.btn-ghost:hover{border-color:var(--text-muted);color:var(--text)}
+.hero-note{margin-top:28px;font-size:0.8rem;color:var(--text-dim);font-family:var(--font-mono)}
 
-/* ---- sections ---- */
-section{padding:64px 0;border-bottom:1px solid var(--line-2)}
-h2{font-family:var(--display);font-size:clamp(26px,3.4vw,36px);margin:0 0 10px;letter-spacing:-.005em}
-.lede{color:var(--fg-2);max-width:64ch;margin:0 0 30px;font-size:16.5px}
-.grid{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
-.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:22px}
-.card h3{font-family:var(--display);font-size:19px;margin:0 0 8px}
-.card p{margin:0;color:var(--fg-2);font-size:14.5px}
-.k{display:inline-block;width:26px;height:3px;border-radius:2px;background:var(--signal);margin-bottom:14px}
+/* ===== SECTIONS ===== */
+section{padding:100px 0}
+.section-label{font-family:var(--font-mono);font-size:0.78rem;text-transform:uppercase;letter-spacing:0.12em;color:var(--signal);margin-bottom:12px}
+.section-title{font-family:var(--font-display);font-size:clamp(1.8rem,4vw,2.6rem);font-weight:700;letter-spacing:-0.02em;margin-bottom:16px}
+.section-desc{color:var(--text-muted);max-width:560px;font-size:1rem;line-height:1.7}
+.section-header{text-align:center;margin-bottom:64px}
+.section-header .section-desc{margin:0 auto}
 
-table{width:100%;border-collapse:collapse;font-size:14.5px;margin:8px 0 0}
-th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line-2);vertical-align:top}
-th{font-family:var(--display);font-weight:600;font-size:13px;text-transform:uppercase;
-   letter-spacing:.06em;color:var(--fg-2)}
-tbody tr:hover{background:var(--chip)}
-code{font-family:var(--mono);font-size:.9em;background:var(--chip);padding:2px 6px;border-radius:4px}
-pre{background:var(--petrol);color:#E8EDEC;border-radius:10px;padding:18px 20px;overflow-x:auto;
-    font-family:var(--mono);font-size:13.5px;line-height:1.6;border:1px solid rgba(232,237,236,.1)}
-pre code{background:none;padding:0;color:inherit}
+/* ===== FEATURES ===== */
+.features{background:var(--bg)}
+.feature-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+.feature-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:32px 28px;transition:all var(--transition)}
+.feature-card:hover{border-color:var(--signal);transform:translateY(-3px);box-shadow:0 12px 32px rgba(0,0,0,0.15)}
+.feature-icon{width:44px;height:44px;background:var(--glow);border-radius:10px;display:flex;align-items:center;justify-content:center;margin-bottom:18px}
+.feature-icon svg{width:22px;height:22px;stroke:var(--signal);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.feature-card h3{font-family:var(--font-display);font-size:1.1rem;font-weight:700;margin-bottom:8px}
+.feature-card p{color:var(--text-muted);font-size:0.9rem;line-height:1.65}
+@media(max-width:900px){.feature-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:560px){.feature-grid{grid-template-columns:1fr}}
 
-.note{border-left:3px solid var(--signal);background:var(--chip);padding:14px 18px;
-      border-radius:0 8px 8px 0;margin:22px 0;font-size:14.5px;color:var(--fg-2)}
-.note b{color:var(--fg)}
+/* ===== HOW IT WORKS ===== */
+.how{background:var(--surface)}
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:32px;position:relative}
+.steps::before{content:'';position:absolute;top:42px;left:calc(16.66% + 24px);right:calc(16.66% + 24px);height:2px;background:linear-gradient(90deg,var(--signal),var(--signal) 50%,var(--border));display:none}
+@media(min-width:769px){.steps::before{display:block}}
+.step{text-align:center;position:relative}
+.step-num{width:48px;height:48px;border-radius:50%;background:var(--glow);border:2px solid var(--signal);display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-weight:700;font-size:1.2rem;color:var(--signal);margin:0 auto 20px;position:relative;z-index:1}
+.step h3{font-family:var(--font-display);font-size:1.15rem;margin-bottom:8px}
+.step p{color:var(--text-muted);font-size:0.9rem;max-width:280px;margin:0 auto;line-height:1.6}
+@media(max-width:768px){.steps{grid-template-columns:1fr;gap:40px}}
 
-footer{padding:40px 0 60px;color:var(--fg-3);font-size:14px}
-footer a{color:var(--fg-2)}
+/* ===== PRICING ===== */
+.pricing{background:var(--bg)}
+.pricing-toggle{display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:48px}
+.pricing-toggle span{font-size:0.9rem;color:var(--text-muted);font-weight:500}
+.pricing-toggle span.active{color:var(--text)}
+.toggle-track{width:52px;height:28px;background:var(--petrol-3);border:1px solid var(--border);border-radius:100px;cursor:pointer;position:relative;transition:background var(--transition)}
+.toggle-track.annual{background:var(--signal)}
+.toggle-thumb{width:22px;height:22px;background:#fff;border-radius:50%;position:absolute;top:2px;left:2px;transition:transform var(--transition);box-shadow:0 1px 4px rgba(0,0,0,0.2)}
+.toggle-track.annual .toggle-thumb{transform:translateX(24px)}
+.save-badge{font-size:0.75rem;background:rgba(46,125,91,0.15);color:var(--good);padding:2px 10px;border-radius:100px;font-weight:600}
+.pricing-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;align-items:start}
+.price-card{background:var(--surface);border:1.5px solid var(--border);border-radius:var(--radius-lg);padding:32px 24px;position:relative;transition:all var(--transition)}
+.price-card:hover{transform:translateY(-3px);box-shadow:0 12px 40px rgba(0,0,0,0.12)}
+.price-card.featured{border-color:var(--signal);box-shadow:0 0 0 1px var(--signal),0 8px 32px rgba(229,165,10,0.1)}
+.popular-badge{position:absolute;top:-13px;left:50%;transform:translateX(-50%);background:var(--signal);color:var(--petrol);font-family:var(--font-display);font-size:0.72rem;font-weight:700;padding:4px 16px;border-radius:100px;text-transform:uppercase;letter-spacing:0.06em;white-space:nowrap}
+.price-card h3{font-family:var(--font-display);font-size:1.2rem;margin-bottom:4px}
+.price-card .price{font-family:var(--font-display);font-size:2.4rem;font-weight:700;margin:12px 0 4px}
+.price-card .price .unit{font-size:0.9rem;font-weight:400;color:var(--text-muted)}
+.price-card .price-note{font-size:0.8rem;color:var(--text-dim);min-height:20px;margin-bottom:20px;font-family:var(--font-mono)}
+.price-card ul{list-style:none;margin-bottom:28px}
+.price-card li{font-size:0.88rem;color:var(--text-muted);padding:6px 0;display:flex;align-items:flex-start;gap:8px;line-height:1.5}
+.price-card li svg{width:16px;height:16px;flex-shrink:0;margin-top:3px;stroke:var(--good);fill:none;stroke-width:2.5}
+.price-card .btn{width:100%;justify-content:center;font-size:0.9rem;padding:11px 20px}
+.price-card.featured .btn{background:var(--signal);color:var(--petrol);border-color:var(--signal)}
+.price-card.featured .btn:hover{background:#d4960a}
+@media(max-width:1024px){.pricing-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:560px){.pricing-grid{grid-template-columns:1fr;max-width:400px;margin:0 auto}}
+
+/* ===== SAFETY ===== */
+.safety{background:var(--surface)}
+.safety-flow{display:flex;align-items:stretch;gap:0;justify-content:center;margin-top:48px;flex-wrap:wrap}
+.safety-gate{flex:1;min-width:200px;max-width:320px;text-align:center;padding:32px 24px;position:relative}
+.safety-gate:not(:last-child)::after{content:'';position:absolute;right:-1px;top:50%;transform:translateY(-50%);width:0;height:0;border-top:12px solid transparent;border-bottom:12px solid transparent;border-left:14px solid var(--signal);z-index:1}
+.gate-icon{width:56px;height:56px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;border:2px solid}
+.gate-1 .gate-icon{border-color:var(--warn);background:rgba(184,131,11,0.1)}
+.gate-2 .gate-icon{border-color:var(--alert);background:rgba(196,54,43,0.08)}
+.gate-3 .gate-icon{border-color:var(--good);background:rgba(46,125,91,0.1)}
+.gate-icon svg{width:24px;height:24px;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.gate-1 .gate-icon svg{stroke:var(--warn)}
+.gate-2 .gate-icon svg{stroke:var(--alert)}
+.gate-3 .gate-icon svg{stroke:var(--good)}
+.safety-gate h3{font-family:var(--font-display);font-size:1.05rem;margin-bottom:6px}
+.safety-gate p{color:var(--text-muted);font-size:0.88rem;line-height:1.6}
+.safety-bottom{text-align:center;margin-top:40px;padding:20px;background:var(--raised);border-radius:var(--radius);border:1px solid var(--border)}
+.safety-bottom p{color:var(--text-muted);font-size:0.9rem}
+.safety-bottom strong{color:var(--good)}
+@media(max-width:700px){
+  .safety-flow{flex-direction:column;align-items:center}
+  .safety-gate:not(:last-child)::after{right:50%;top:auto;bottom:-14px;transform:translateX(50%) rotate(90deg)}
+  .safety-gate{max-width:100%}
+}
+
+/* ===== DOWNLOADS ===== */
+.downloads{background:var(--bg)}
+.dl-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;max-width:740px;margin:0 auto}
+.dl-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:22px 20px;text-align:center;transition:all var(--transition);cursor:pointer;text-decoration:none}
+.dl-card:hover{border-color:var(--signal);transform:translateY(-2px)}
+.dl-card svg{width:36px;height:36px;margin:0 auto 12px;stroke:var(--text-muted);fill:none;stroke-width:1.5}
+.dl-card:hover svg{stroke:var(--signal)}
+.dl-card h4{font-family:var(--font-display);font-size:1rem;margin-bottom:4px}
+.dl-card p{font-size:0.78rem;color:var(--text-dim);font-family:var(--font-mono)}
+.dl-sub{text-align:center;margin-top:24px;font-size:0.85rem;color:var(--text-dim)}
+.dl-sub a{color:var(--signal);border-bottom:1px solid transparent}
+.dl-sub a:hover{border-color:var(--signal)}
+@media(max-width:560px){.dl-grid{grid-template-columns:1fr}}
+
+/* ===== FOOTER ===== */
+.footer{background:var(--petrol);border-top:1px solid var(--border);padding:48px 0}
+.footer-inner{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:20px}
+.footer-brand{display:flex;align-items:center;gap:8px;font-family:var(--font-display);font-weight:700;font-size:1.05rem}
+.footer-brand svg{width:22px;height:22px}
+.footer-tagline{color:var(--text-dim);font-size:0.85rem;font-family:var(--font-mono);text-align:center;flex:1}
+.footer-links{display:flex;gap:20px;align-items:center}
+.footer-links a{color:var(--text-muted);font-size:0.85rem;transition:color var(--transition)}
+.footer-links a:hover{color:var(--signal)}
+@media(max-width:600px){.footer-inner{flex-direction:column;text-align:center}}
 </style>
 </head>
-<body>
+<body class="auto-theme">
 
-<div class="bar"><div class="wrap">
-  <div class="brand">Han<span>gar</span></div>
-  <nav>
-    <a href="#install">Install</a>
-    <a href="#safety">Safety</a>
-    <a href="#views">Views</a>
-    <a href="storybook/">Components</a>
-    <a href="https://github.com/Army161/hangar">GitHub</a>
-  </nav>
-  <button class="tbtn" id="theme">Theme</button>
-</div></div>
-
-<div class="hero"><div class="wrap">
-  <h1>Why is this running, and <em>what happens if I turn it off?</em></h1>
-  <p>Task Manager tells you <code style="background:rgba(232,237,236,.12);color:#E8EDEC">node.exe ×76</code>.
-     Hangar tells you which seventy-six, who started them, when that was arranged,
-     and what breaks if you stop them.</p>
-  <div class="cta">
-    <a class="btn btn-p" href="https://github.com/Army161/hangar/releases/latest">Download 0.4.0</a>
-    <a class="btn btn-s" href="#install">All platforms</a>
+<!-- NAV -->
+<nav class="nav" id="nav">
+  <div class="nav-inner">
+    <a href="#" class="nav-brand">
+      <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="6" width="24" height="16" rx="3" stroke="#E5A50A" stroke-width="1.8"/><path d="M8 6V4a2 2 0 012-2h8a2 2 0 012 2v2" stroke="#E5A50A" stroke-width="1.8" stroke-linecap="round"/><circle cx="14" cy="14" r="3" stroke="#E5A50A" stroke-width="1.8"/><path d="M14 17v3" stroke="#E5A50A" stroke-width="1.8" stroke-linecap="round"/></svg>
+      Hangar
+    </a>
+    <div class="nav-links" id="navLinks">
+      <a href="#features">Features</a>
+      <a href="#how">How It Works</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#safety">Safety</a>
+      <a href="#downloads">Download</a>
+      <a href="https://github.com/Army161/hangar" target="_blank" rel="noopener" class="nav-cta">GitHub</a>
+    </div>
+    <button class="mobile-toggle" id="mobileToggle" aria-label="Toggle menu">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
   </div>
-</div></div>
+</nav>
 
-<section id="install"><div class="wrap">
-  <h2>Install</h2>
-  <p class="lede">Signed installers for every desktop platform, built natively on
-     their own runner — macOS and Linux cannot be cross-compiled from Windows.</p>
-  <table>
-    <thead><tr><th>Platform</th><th>File</th><th>Notes</th></tr></thead>
-    <tbody>
-      <tr><td>Windows</td><td><code>Hangar_0.4.0_x64-setup.exe</code></td><td>Per-user, no admin prompt</td></tr>
-      <tr><td>Windows (MSI)</td><td><code>Hangar_0.4.0_x64_en-US.msi</code></td><td>For managed deployment</td></tr>
-      <tr><td>macOS — Apple Silicon</td><td><code>Hangar_0.4.0_aarch64.dmg</code></td><td></td></tr>
-      <tr><td>macOS — Intel</td><td><code>Hangar_0.4.0_x64.dmg</code></td><td></td></tr>
-      <tr><td>Linux</td><td><code>hangar_0.4.0_amd64.AppImage</code></td><td>Also <code>.deb</code></td></tr>
-    </tbody>
-  </table>
-
-  <h3 style="font-family:var(--display);margin:32px 0 8px">Or run the web version</h3>
-  <p class="lede">Zero dependencies — pure Node stdlib, no <code>npm install</code>.</p>
-<pre><code>git clone https://github.com/Army161/hangar.git
-cd hangar
-node server.js      <span style="color:#8CA3A6"># then open http://localhost:7420</span></code></pre>
-</div></section>
-
-<section id="safety"><div class="wrap">
-  <h2>Three gates before anything dies</h2>
-  <p class="lede">Hangar can stop processes. Every kill passes all three, in order.</p>
-  <div class="grid">
-    <div class="card"><div class="k"></div><h3>1 — Dry run</h3>
-      <p>Returns exactly what would die and what the guard refuses, with a confirmation
-         phrase. Nothing is killed.</p></div>
-    <div class="card"><div class="k"></div><h3>2 — Typed confirmation</h3>
-      <p>Requires the plan id <em>and</em> the exact phrase. Plans are single-use and
-         expire after five minutes.</p></div>
-    <div class="card"><div class="k"></div><h3>3 — Re-evaluation</h3>
-      <p>The guard runs again on a fresh process table. PIDs recycle, so a plan is a
-         proposal, not a licence.</p></div>
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-content">
+    <div class="hero-badge"><span></span> v0.4.0 — Tauri Desktop App</div>
+    <h1>"Why is this running, and <em>what happens if I turn it off?</em>"</h1>
+    <p class="hero-sub">Task Manager tells you <strong>node.exe &times;76</strong>. Hangar tells you <strong>which 76</strong>, who started them, when, and what breaks if you stop them.</p>
+    <div class="hero-actions">
+      <a href="#downloads" class="btn btn-primary">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download on GitHub
+      </a>
+      <a href="https://github.com/Army161/hangar" target="_blank" rel="noopener" class="btn btn-ghost">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        View on GitHub
+      </a>
+    </div>
+    <p class="hero-note">Windows &bull; macOS &bull; Linux &mdash; No telemetry. No account required. Works offline.</p>
   </div>
-  <div class="note"><b>A restore manifest is written before the first kill.</b>
-     If the manifest cannot be written, nothing dies. Nothing is ever deleted —
-     disabled startup entries move to <code>quarantine/</code> and come back intact.</div>
-</div></section>
+</section>
 
-<section id="views"><div class="wrap">
-  <h2>The views</h2>
-  <p class="lede">Six answers to six different questions about your machine.</p>
-  <table>
-    <thead><tr><th>View</th><th>What it answers</th></tr></thead>
-    <tbody>
-      <tr><td><b>Owners</b></td><td>What is actually running, grouped by the real thing that owns it — not <code>node.exe ×76</code>.</td></tr>
-      <tr><td><b>Port wall</b></td><td>Every listening port, probed for HTTP and labelled with its page title.</td></tr>
-      <tr><td><b>Origins</b></td><td>Everything configured to start itself, oldest first, with the date it was added.</td></tr>
-      <tr><td><b>Fan-out</b></td><td>The same thing running more than once, and what collapsing it would reclaim.</td></tr>
-      <tr><td><b>Graveyard</b></td><td>Projects that stopped being touched, ranked by what reviving or removing them reclaims.</td></tr>
-      <tr><td><b>Manifests</b></td><td>Every park, newest first, with one-click Restore.</td></tr>
-    </tbody>
-  </table>
-</div></section>
+<!-- FEATURES -->
+<section class="features" id="features">
+  <div class="container">
+    <div class="section-header">
+      <p class="section-label">Features</p>
+      <h2 class="section-title">Everything your Task Manager won't tell you</h2>
+      <p class="section-desc">Hangar goes beyond the process list. See who owns what, what's listening, and what you can safely shut down.</p>
+    </div>
+    <div class="feature-grid">
 
-<section><div class="wrap">
-  <h2>It never leaves the machine</h2>
-  <p class="lede">The desktop build has no TCP listener at all — the UI talks to the
-     Rust core over IPC. The web agent binds <code>127.0.0.1</code> only. There is no
-     telemetry, no account, and no upload path. Your process table is yours.</p>
-  <div class="note">Run with <code>HANGAR_READONLY=1</code> to disable every write
-     endpoint and use Hangar purely as an observer.</div>
-</div></section>
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg viewBox="0 0 24 24"><path d="M12 3v4m0 0l-3-2m3 2l3-2"/><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M9 14h0m3 0h0m3 0h0"/></svg>
+        </div>
+        <h3>Owners View</h3>
+        <p>Every process grouped by the real app or project that owns it, not the executable name. See your stack, not a flat list.</p>
+      </div>
 
-<footer><div class="wrap">
-  Hangar 0.4.0 · <a href="https://github.com/Army161/hangar">github.com/Army161/hangar</a>
-  · <a href="storybook/">Component gallery</a>
-</div></footer>
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M9 3v18m6-18v18M3 9h18M3 15h18"/></svg>
+        </div>
+        <h3>Port Wall</h3>
+        <p>Every listening port, probed for HTTP, labelled with its page title, clickable. Know what's bound and who put it there.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/><path d="M3.5 12H2m20 0h-1.5"/></svg>
+        </div>
+        <h3>Origins</h3>
+        <p>Everything configured to start itself, with dated entries and a reversible off switch. Take back your boot sequence.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg viewBox="0 0 24 24"><path d="M4 20h16"/><path d="M4 20V10l4-6h8l4 6v10"/><path d="M9 20v-4h6v4"/><path d="M10 12h4"/></svg>
+        </div>
+        <h3>Graveyard Scanner</h3>
+        <p>Dormant projects ranked by what cleaning them up would reclaim. Stop old projects from haunting your machine.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M12 11V7a4 4 0 00-8 0v4"/><circle cx="12" cy="16" r="1.5"/></svg>
+        </div>
+        <h3>Safety Gates</h3>
+        <p>Dry run, typed confirmation, re-evaluation. Nothing is killed without your explicit approval. Every action is reversible.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M7 22h10"/><path d="M12 18v4"/><circle cx="12" cy="11" r="3"/><path d="M8.5 8.5L12 11l3.5-2.5"/></svg>
+        </div>
+        <h3>Local-First</h3>
+        <p>Process table never leaves the machine. No telemetry. Works offline. Your system data stays on your system.</p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section class="how" id="how">
+  <div class="container">
+    <div class="section-header">
+      <p class="section-label">How It Works</p>
+      <h2 class="section-title">Three steps. Full control.</h2>
+      <p class="section-desc">Install Hangar, let it map your machine, then act with confidence.</p>
+    </div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <h3>Install</h3>
+        <p>Download the setup for your platform. No account needed. Hangar runs as a local Tauri desktop app.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <h3>Scan</h3>
+        <p>Hangar maps every process, port, and startup origin. See the full picture in seconds, grouped by real owners.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <h3>Act Safely</h3>
+        <p>Park, restore, or clean up with the 3-gate safety model. Dry run first, confirm explicitly, re-evaluate after.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PRICING -->
+<section class="pricing" id="pricing">
+  <div class="container">
+    <div class="section-header">
+      <p class="section-label">Pricing</p>
+      <h2 class="section-title">Start free. Scale when you need to.</h2>
+      <p class="section-desc">Full local mapping is free forever. Add history, multi-machine sync, and fleet management as you grow.</p>
+    </div>
+
+    <div class="pricing-toggle">
+      <span class="active" id="monthlyLabel">Monthly</span>
+      <div class="toggle-track" id="pricingToggle" role="switch" aria-checked="false" tabindex="0">
+        <div class="toggle-thumb"></div>
+      </div>
+      <span id="annualLabel">Annual</span>
+      <span class="save-badge">Save ~17%</span>
+    </div>
+
+    <div class="pricing-grid">
+
+      <!-- FREE -->
+      <div class="price-card">
+        <h3>Free</h3>
+        <div class="price">$0 <span class="unit"></span></div>
+        <div class="price-note">Free forever</div>
+        <ul>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>1 machine</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Full local process map</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Port Wall</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Park &amp; restore</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Offline forever</li>
+        </ul>
+        <a href="#downloads" class="btn btn-ghost">Download on GitHub</a>
+      </div>
+
+      <!-- PLUS -->
+      <div class="price-card">
+        <h3>Plus</h3>
+        <div class="price" data-monthly="6" data-annual="5">$6 <span class="unit">/mo</span></div>
+        <div class="price-note" data-monthly="" data-annual="$60 billed annually">&#8203;</div>
+        <ul>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>3 machines</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>30-day history</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Graveyard Scanner</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Everything in Free</li>
+        </ul>
+        <a href="#downloads" class="btn btn-ghost">Get Plus</a>
+      </div>
+
+      <!-- PRO (FEATURED) -->
+      <div class="price-card featured">
+        <div class="popular-badge">Most Popular</div>
+        <h3>Pro</h3>
+        <div class="price" data-monthly="12" data-annual="10">$12 <span class="unit">/mo</span></div>
+        <div class="price-note" data-monthly="" data-annual="$120 billed annually">&#8203;</div>
+        <ul>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>10 machines</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Unlimited history</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Multi-machine sync</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Secret audit</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Scheduled sweeps</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Everything in Plus</li>
+        </ul>
+        <a href="#downloads" class="btn btn-primary">Get Pro</a>
+      </div>
+
+      <!-- MAX -->
+      <div class="price-card">
+        <h3>Max</h3>
+        <div class="price" data-monthly="29" data-annual="24.17">$29 <span class="unit">/seat/mo</span></div>
+        <div class="price-note" data-monthly="" data-annual="$290/seat billed annually">&#8203;</div>
+        <ul>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Unlimited machines</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Fleet view</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Shared policies</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>SSO</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Audit log</li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Everything in Pro</li>
+        </ul>
+        <a href="#downloads" class="btn btn-ghost">Get Max</a>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- SAFETY -->
+<section class="safety" id="safety">
+  <div class="container">
+    <div class="section-header">
+      <p class="section-label">Safety Model</p>
+      <h2 class="section-title">Three gates between you and "oops"</h2>
+      <p class="section-desc">Every destructive action in Hangar passes through three safety gates. Nothing is killed without your explicit approval.</p>
+    </div>
+    <div class="safety-flow">
+      <div class="safety-gate gate-1">
+        <div class="gate-icon">
+          <svg viewBox="0 0 24 24"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+        </div>
+        <h3>1. Dry Run</h3>
+        <p>See exactly what would happen before anything changes. Hangar simulates the action and shows you the full impact.</p>
+      </div>
+      <div class="safety-gate gate-2">
+        <div class="gate-icon">
+          <svg viewBox="0 0 24 24"><path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/></svg>
+        </div>
+        <h3>2. Typed Confirmation</h3>
+        <p>No accidental clicks. You type the action name to confirm. This ensures deliberate, conscious approval for every operation.</p>
+      </div>
+      <div class="safety-gate gate-3">
+        <div class="gate-icon">
+          <svg viewBox="0 0 24 24"><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 100-6.68L1 10"/><polyline points="9 12 12 12 12 9"/></svg>
+        </div>
+        <h3>3. Re-evaluation</h3>
+        <p>After every action, Hangar re-scans and shows you the new state. If something went wrong, restore it instantly.</p>
+      </div>
+    </div>
+    <div class="safety-bottom">
+      <p><strong>Every action is reversible.</strong> Park processes instead of killing them. Disable startup items instead of deleting them. Always a way back.</p>
+    </div>
+  </div>
+</section>
+
+<!-- DOWNLOADS -->
+<section class="downloads" id="downloads">
+  <div class="container">
+    <div class="section-header">
+      <p class="section-label">Download</p>
+      <h2 class="section-title">Get Hangar for your platform</h2>
+      <p class="section-desc">Free download. No account. No telemetry. Runs entirely on your machine.</p>
+    </div>
+    <div class="dl-grid">
+      <a href="https://github.com/Army161/hangar/releases" class="dl-card">
+        <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15v2a2 2 0 002 2h12a2 2 0 002-2v-2"/><rect x="3" y="3" width="18" height="12" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>
+        <h4>Windows</h4>
+        <p>.exe setup (x64)</p>
+      </a>
+      <a href="https://github.com/Army161/hangar/releases" class="dl-card">
+        <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a8.5 8.5 0 00-2.8 16.5C10.5 17.5 11 16 11 14.5S10.5 12 9 11.5C10.5 10 12 8 12 5c0-1-.5-2.5-1-3 1 0 4.5 1.5 4.5 5.5S13.5 13 12 14.5s-1 3-1 4c0 .5.5 1.5 1 2"/></svg>
+        <h4>macOS</h4>
+        <p>Apple Silicon (.dmg)</p>
+      </a>
+      <a href="https://github.com/Army161/hangar/releases" class="dl-card">
+        <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3l-4.5 8h9L12 3z"/><path d="M12 21l4.5-8h-9L12 21z"/></svg>
+        <h4>Linux</h4>
+        <p>.AppImage (amd64)</p>
+      </a>
+    </div>
+    <p class="dl-sub">Also available: <a href="https://github.com/Army161/hangar/releases">Windows MSI</a> &bull; <a href="https://github.com/Army161/hangar/releases">macOS Intel</a> &bull; <a href="https://github.com/Army161/hangar/releases">All releases on GitHub</a></p>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <svg viewBox="0 0 28 28" fill="none" width="22" height="22"><rect x="2" y="6" width="24" height="16" rx="3" stroke="#E5A50A" stroke-width="1.8"/><path d="M8 6V4a2 2 0 012-2h8a2 2 0 012 2v2" stroke="#E5A50A" stroke-width="1.8" stroke-linecap="round"/><circle cx="14" cy="14" r="3" stroke="#E5A50A" stroke-width="1.8"/></svg>
+        Hangar
+      </div>
+      <p class="footer-tagline">No telemetry. No account required. Works offline.</p>
+      <div class="footer-links">
+        <a href="https://github.com/Army161/hangar" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/Army161/hangar/releases" target="_blank" rel="noopener">Releases</a>
+      </div>
+    </div>
+  </div>
+</footer>
 
 <script>
-const b=document.getElementById('theme'),r=document.documentElement;
-const saved=localStorage.getItem('hangar-docs-theme');
-if(saved)r.setAttribute('data-theme',saved);
-b.onclick=()=>{
-  const cur=r.getAttribute('data-theme')
-    ||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
-  const next=cur==='dark'?'light':'dark';
-  r.setAttribute('data-theme',next);localStorage.setItem('hangar-docs-theme',next);
-};
+(function(){
+  // Mobile nav toggle
+  var toggle = document.getElementById('mobileToggle');
+  var links = document.getElementById('navLinks');
+  toggle.addEventListener('click', function() {
+    links.classList.toggle('open');
+  });
+  // Close mobile nav on link click
+  links.querySelectorAll('a').forEach(function(a) {
+    a.addEventListener('click', function() { links.classList.remove('open'); });
+  });
+
+  // Pricing toggle
+  var track = document.getElementById('pricingToggle');
+  var mLabel = document.getElementById('monthlyLabel');
+  var aLabel = document.getElementById('annualLabel');
+  var isAnnual = false;
+
+  function setPricing(annual) {
+    isAnnual = annual;
+    track.classList.toggle('annual', annual);
+    track.setAttribute('aria-checked', annual);
+    mLabel.classList.toggle('active', !annual);
+    aLabel.classList.toggle('active', annual);
+
+    document.querySelectorAll('.price-card .price[data-monthly]').forEach(function(el) {
+      var m = el.getAttribute('data-monthly');
+      var a = el.getAttribute('data-annual');
+      var unit = el.querySelector('.unit');
+      if (annual) {
+        el.childNodes[0].textContent = '$' + a + ' ';
+        if (unit) unit.textContent = unit.textContent.replace('/mo', '/mo');
+      } else {
+        el.childNodes[0].textContent = '$' + m + ' ';
+      }
+    });
+
+    document.querySelectorAll('.price-card .price-note[data-monthly]').forEach(function(el) {
+      var m = el.getAttribute('data-monthly');
+      var a = el.getAttribute('data-annual');
+      el.textContent = annual ? a : (m || '\u200B');
+    });
+  }
+
+  track.addEventListener('click', function() { setPricing(!isAnnual); });
+  track.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setPricing(!isAnnual); }
+  });
+
+  // Nav background on scroll
+  var nav = document.getElementById('nav');
+  window.addEventListener('scroll', function() {
+    if (window.scrollY > 40) {
+      nav.style.background = 'rgba(14,43,49,0.95)';
+    } else {
+      nav.style.background = 'rgba(14,43,49,0.85)';
+    }
+  }, {passive: true});
+})();
 </script>
 </body>
 </html>
